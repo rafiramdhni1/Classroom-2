@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: smk-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: smk_akademik
+
+  backend:
+    build: ./backend
+    container_name: smk-backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mongodb
+    env_file:
+      - ./backend/.env
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017/smk_akademik
+    volumes:
+      - ./backend/logs:/app/logs
+
+  bot:
+    build: ./backend
+    container_name: smk-bot
+    restart: unless-stopped
+    command: node bot-poll.js
+    depends_on:
+      - mongodb
+      - backend
+    env_file:
+      - ./backend/.env
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017/smk_akademik
+
+  frontend:
+    build: ./frontend
+    container_name: smk-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  mongodb_data:

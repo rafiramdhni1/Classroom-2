@@ -1,0 +1,89 @@
+{
+  "name": "SMK TKJ - Notifikasi Harian",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 17 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Jadwal Harian (17:00)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://localhost:5000/api/webhook/sync-and-notify",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "trigger-sync",
+      "name": "Trigger Sinkron + Notifikasi",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.status }}",
+              "operation": "equal",
+              "value2": 200
+            }
+          ]
+        }
+      },
+      "id": "check-success",
+      "name": "Cek Berhasil",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "channel": "email",
+        "toEmail": "admin@smk-tkj.sch.id",
+        "subject": "Laporan Notifikasi Harian TKJ",
+        "message": "Notifikasi harian berhasil dikirim pada {{ $now.format('dd/MM/yyyy HH:mm') }}"
+      },
+      "id": "send-report",
+      "name": "Kirim Laporan Admin",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [900, 200],
+      "disabled": true
+    }
+  ],
+  "connections": {
+    "Jadwal Harian (17:00)": {
+      "main": [
+        [{ "node": "Trigger Sinkron + Notifikasi", "type": "main", "index": 0 }]
+      ]
+    },
+    "Trigger Sinkron + Notifikasi": {
+      "main": [
+        [{ "node": "Cek Berhasil", "type": "main", "index": 0 }]
+      ]
+    },
+    "Cek Berhasil": {
+      "main": [
+        [{ "node": "Kirim Laporan Admin", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
