@@ -31,6 +31,11 @@ export default function AdminPanel() {
   const [searchInput, setSearchInput] = useState('');
   const searchTimeout = useRef(null);
 
+  const [backups, setBackups] = useState([]);
+  const [creatingBackup, setCreatingBackup] = useState(false);
+  const [monitoring, setMonitoring] = useState(null);
+  const [monitoringLoading, setMonitoringLoading] = useState(false);
+
   const KELAS_LIST = ['X-TKJ1', 'X-TKJ2', 'XI-TKJ1', 'XI-TKJ2', 'XII-TKJ1', 'XII-TKJ2'];
 
   useEffect(() => { loadData(); }, []);
@@ -42,6 +47,11 @@ export default function AdminPanel() {
       window.history.replaceState({}, '', '/admin');
     }
   }, []);
+
+  useEffect(() => {
+    if (tab === 'backup') loadBackups();
+    if (tab === 'monitoring') loadMonitoring();
+  }, [tab]);
   useEffect(() => { loadStudents(); }, [page, filterKelas, search]);
 
   const handleSearch = (value) => {
@@ -180,6 +190,60 @@ export default function AdminPanel() {
 
   const filteredStudents = students;
 
+  const loadBackups = async () => {
+    try {
+      const { data } = await api.get('/tools/backup/list');
+      setBackups(data.backups);
+    } catch (err) {
+      console.error('Gagal memuat backup:', err);
+    }
+  };
+
+  const createBackupNow = async () => {
+    setCreatingBackup(true);
+    try {
+      const { data } = await api.post('/tools/backup/create', { label: 'manual' });
+      alert(`Backup berhasil: ${data.backup.name}\nUkuran: ${data.backup.sizeFormatted}`);
+      loadBackups();
+    } catch (err) {
+      alert('Gagal membuat backup: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setCreatingBackup(false);
+    }
+  };
+
+  const restoreBackupNow = async (name) => {
+    if (!confirm(`Restore backup "${name}"? Data saat ini akan ditimpa!`)) return;
+    try {
+      await api.post(`/tools/backup/restore/${name}`);
+      alert('Restore berhasil!');
+    } catch (err) {
+      alert('Gagal restore: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const deleteBackupNow = async (name) => {
+    if (!confirm(`Hapus backup "${name}"?`)) return;
+    try {
+      await api.delete(`/tools/backup/${name}`);
+      loadBackups();
+    } catch (err) {
+      alert('Gagal hapus: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const loadMonitoring = async () => {
+    setMonitoringLoading(true);
+    try {
+      const { data } = await api.get('/tools/monitoring/status');
+      setMonitoring(data);
+    } catch (err) {
+      console.error('Gagal memuat monitoring:', err);
+    } finally {
+      setMonitoringLoading(false);
+    }
+  };
+
   const connectGoogle = async () => {
     try {
       const { data } = await api.get('/auth/google');
@@ -260,6 +324,8 @@ export default function AdminPanel() {
           { key: 'codes', label: 'Kode Aktivasi' },
           { key: 'import', label: 'Import' },
           { key: 'google', label: 'Google Classroom' },
+          { key: 'backup', label: 'Backup' },
+          { key: 'monitoring', label: 'Monitoring' },
         ].map(t => (
           <button
             key={t.key}
@@ -579,6 +645,161 @@ export default function AdminPanel() {
                 </button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Backup Tab */}
+        {tab === 'backup' && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl p-4 shadow-sm space-y-3">
+              <h3 className="font-semibold text-gray-800">Backup Database</h3>
+              <p className="text-xs text-gray-500">Backup otomatis setiap jam 02:00. Manual backup juga tersedia.</p>
+              <button
+                onClick={createBackupNow}
+                disabled={creatingBackup}
+                className="w-full bg-primary-600 text-white py-2 rounded-lg font-medium hover:bg-primary-700 text-sm disabled:opacity-50"
+              >
+                {creatingBackup ? 'Membuat Backup...' : 'Backup Sekarang'}
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-gray-500 uppercase">Riwayat Backup</h3>
+              {backups.length === 0 ? (
+                <p className="text-center text-gray-500 text-sm py-4">Belum ada backup.</p>
+              ) : (
+                backups.map(b => (
+                  <div key={b.name} className="bg-white rounded-xl p-3 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-sm text-gray-800">{b.name}</p>
+                        <p className="text-xs text-gray-500">
+                          {b.collections?.length || 0} koleksi • {new Date(b.createdAt).toLocaleString('id-ID')}
+                        </p>
+                      </div>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => restoreBackupNow(b.name)}
+                          className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-lg hover:bg-yellow-200"
+                        >
+                          Restore
+                        </button>
+                        <button
+                          onClick={() => deleteBackupNow(b.name)}
+                          className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-lg hover:bg-red-200"
+                        >
+                          Hapus
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Monitoring Tab */}
+        {tab === 'monitoring' && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-gray-800">System Status</h3>
+                <button
+                  onClick={loadMonitoring}
+                  disabled={monitoringLoading}
+                  className="text-xs bg-primary-100 text-primary-700 px-3 py-1 rounded-lg hover:bg-primary-200 disabled:opacity-50"
+                >
+                  {monitoringLoading ? 'Loading...' : 'Refresh'}
+                </button>
+              </div>
+
+              {!monitoring ? (
+                <p className="text-sm text-gray-500 text-center py-4">Klik Refresh untuk melihat status.</p>
+              ) : (
+                <div className="space-y-4">
+                  {/* Server */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-gray-50 rounded-lg p-3 text-center">
+                      <div className="text-lg font-bold text-primary-600">{monitoring.server?.uptime}s</div>
+                      <div className="text-xs text-gray-500">Uptime</div>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3 text-center">
+                      <div className="text-lg font-bold text-green-600">{monitoring.database?.status}</div>
+                      <div className="text-xs text-gray-500">Database</div>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3 text-center">
+                      <div className="text-lg font-bold text-gray-800">{monitoring.memory?.percentage}%</div>
+                      <div className="text-xs text-gray-500">RAM ({monitoring.memory?.used})</div>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3 text-center">
+                      <div className="text-lg font-bold text-blue-600">{monitoring.requests?.total || 0}</div>
+                      <div className="text-xs text-gray-500">Total Request</div>
+                    </div>
+                  </div>
+
+                  {/* Error rate */}
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium text-gray-700">Error Rate</span>
+                      <span className={`text-sm font-bold ${
+                        monitoring.requests?.errorRate === '0%' ? 'text-green-600' : 'text-red-600'
+                      }`}>
+                        {monitoring.requests?.errorRate || '0%'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Top routes */}
+                  {monitoring.requests?.topRoutes?.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">Top Routes</h4>
+                      <div className="space-y-1">
+                        {monitoring.requests.topRoutes.map((r, i) => (
+                          <div key={i} className="flex items-center justify-between text-xs bg-gray-50 rounded-lg px-3 py-2">
+                            <span className="font-mono text-gray-700 truncate flex-1">{r.route}</span>
+                            <span className="ml-2 text-gray-500">{r.count}x</span>
+                            {r.errors > 0 && <span className="ml-2 text-red-500">{r.errors} err</span>}
+                            <span className="ml-2 text-gray-400">{r.avgDuration}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Recent errors */}
+                  {monitoring.errors?.recent?.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">Recent Errors</h4>
+                      <div className="space-y-1 max-h-48 overflow-y-auto">
+                        {monitoring.errors.recent.map((e, i) => (
+                          <div key={i} className="bg-red-50 rounded-lg px-3 py-2 text-xs">
+                            <span className="text-red-600 font-mono">{e.source}</span>
+                            <span className="text-gray-600 ml-2">{e.message}</span>
+                            <span className="text-gray-400 ml-2 block">{new Date(e.timestamp).toLocaleString('id-ID')}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Log files */}
+                  {monitoring.logs?.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">Log Files</h4>
+                      <div className="space-y-1">
+                        {monitoring.logs.map((l, i) => (
+                          <div key={i} className="flex items-center justify-between text-xs bg-gray-50 rounded-lg px-3 py-2">
+                            <span className="font-mono text-gray-700">{l.name}</span>
+                            <span className="text-gray-500">{l.size}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

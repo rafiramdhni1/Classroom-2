@@ -15,6 +15,8 @@ const authRoutes = require('./routes/auth');
 const dashboardRoutes = require('./routes/dashboard');
 const adminRoutes = require('./routes/admin');
 const webhookRoutes = require('./routes/webhook');
+const toolsRoutes = require('./routes/tools');
+const { trackRequest, logError } = require('./services/monitoring');
 
 connectDB();
 
@@ -53,6 +55,10 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (req.url !== '/api/health') {
       logger.info(`${req.method} ${req.url} ${res.statusCode} ${duration}ms`);
+      trackRequest(req, res, duration);
+      if (res.statusCode >= 500) {
+        logError('server', `${req.method} ${req.url} ${res.statusCode}`, null);
+      }
     }
   });
   next();
@@ -62,6 +68,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/webhook', webhookRoutes);
+app.use('/api/tools', toolsRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -95,7 +102,28 @@ cron.schedule('0 17 * * 1-5', async () => {
   }
 });
 
+cron.schedule('0 2 * * *', async () => {
+  logger.info('[CRON] Backup database mulai...');
+  try {
+    const { createBackup } = require('./services/backup');
+    const result = await createBackup('auto');
+    logger.info(`[CRON] Backup selesai: ${result.name} (${result.collections.length} collections)`);
+  } catch (err) {
+    logger.error('[CRON] Backup error:', err.message);
+  }
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);
+});
+
+process.on('uncaughtException', (err) => {
+  logger.error('Uncaught Exception:', err.message);
+  logError('process', 'Uncaught Exception: ' + err.message, err.stack);
+});
+
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled Rejection:', reason);
+  logError('process', 'Unhandled Rejection: ' + String(reason));
 });

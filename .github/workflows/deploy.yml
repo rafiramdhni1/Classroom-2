@@ -1,0 +1,44 @@
+name: Deploy SMK Akademik
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install backend dependencies
+        run: cd backend && npm install --production
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm install
+
+      - name: Build frontend
+        run: cd frontend && npm run build
+
+      - name: Stop old server
+        run: taskkill /F /IM node.exe 2>nul || true
+        shell: pwsh
+
+      - name: Start server
+        run: |
+          Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd backend; node server.js" -WindowStyle Minimized
+          Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd backend; node bot-poll.js" -WindowStyle Minimized
+        shell: pwsh
+
+      - name: Health check
+        run: |
+          Start-Sleep -Seconds 5
+          $r = Invoke-RestMethod -Uri "http://localhost:5000/api/health"
+          Write-Host "Server status: $($r.status)"
+        shell: pwsh

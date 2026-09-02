@@ -19,6 +19,9 @@ build/
 frontend/dist/
 backend/dist/
 
+# Backups
+backend/backups/
+
 # IDE
 .vscode/
 .idea/
