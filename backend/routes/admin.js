@@ -290,10 +290,12 @@ router.get('/dashboard-stats', adminOnly, async (req, res) => {
 });
 
 function cryptoRandom(length) {
+  const crypto = require('crypto');
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let result = '';
+  const bytes = crypto.randomBytes(length);
   for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
+    result += chars.charAt(bytes[i] % chars.length);
   }
   return result;
 }

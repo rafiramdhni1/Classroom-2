@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../utils/api';
 
@@ -26,10 +26,32 @@ export default function AdminPanel() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
 
+  const [editingStudent, setEditingStudent] = useState(null);
+  const [editForm, setEditForm] = useState({ nis: '', nisn: '', nama: '', kelas: '' });
+  const [searchInput, setSearchInput] = useState('');
+  const searchTimeout = useRef(null);
+
   const KELAS_LIST = ['X-TKJ1', 'X-TKJ2', 'XI-TKJ1', 'XI-TKJ2', 'XII-TKJ1', 'XII-TKJ2'];
 
   useEffect(() => { loadData(); }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('google_auth') === 'success') {
+      setGoogleAuth(true);
+      window.history.replaceState({}, '', '/admin');
+    }
+  }, []);
   useEffect(() => { loadStudents(); }, [page, filterKelas, search]);
+
+  const handleSearch = (value) => {
+    setSearchInput(value);
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    searchTimeout.current = setTimeout(() => {
+      setSearch(value);
+      setPage(1);
+    }, 400);
+  };
 
   const loadData = async () => {
     try {
@@ -128,6 +150,31 @@ export default function AdminPanel() {
       loadData();
     } catch (err) {
       console.error('Gagal hapus:', err);
+    }
+  };
+
+  const editStudent = (s) => {
+    setEditingStudent(s);
+    setEditForm({ nis: s.nis, nisn: s.nisn || '', nama: s.nama, kelas: s.kelas });
+  };
+
+  const saveStudent = async () => {
+    try {
+      await api.put(`/admin/students/${editingStudent._id}`, editForm);
+      setEditingStudent(null);
+      loadStudents();
+    } catch (err) {
+      alert('Gagal menyimpan: ' + (err.response?.data?.error || err.message));
+    }
+  };
+
+  const deleteStudent = async (id) => {
+    if (!confirm('Hapus siswa ini? Tindakan ini tidak dapat dibatalkan.')) return;
+    try {
+      await api.delete(`/admin/students/${id}`);
+      loadStudents();
+    } catch (err) {
+      alert('Gagal menghapus: ' + (err.response?.data?.error || err.message));
     }
   };
 
@@ -234,8 +281,8 @@ export default function AdminPanel() {
               <input
                 type="text"
                 placeholder="Cari nama/NIS..."
-                value={search}
-                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+                value={searchInput}
+                onChange={(e) => handleSearch(e.target.value)}
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 outline-none"
               />
               <select
@@ -250,26 +297,40 @@ export default function AdminPanel() {
 
             <div className="space-y-2">
               {filteredStudents.map(s => (
-                <div key={s._id} className="bg-white rounded-xl p-3 shadow-sm flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-gray-800 text-sm">{s.nama}</p>
-                    <p className="text-xs text-gray-500">{s.nis} - {s.kelas}</p>
-                  </div>
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => generateCode(s._id, 'student')}
-                      disabled={generatingCode === s._id + 'student'}
-                      className="text-xs bg-primary-100 text-primary-700 px-2 py-1 rounded-lg hover:bg-primary-200"
-                    >
-                      {generatingCode === s._id + 'student' ? '...' : 'Siswa'}
-                    </button>
-                    <button
-                      onClick={() => generateCode(s._id, 'parent')}
-                      disabled={generatingCode === s._id + 'parent'}
-                      className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-lg hover:bg-green-200"
-                    >
-                      {generatingCode === s._id + 'parent' ? '...' : 'Ortu'}
-                    </button>
+                <div key={s._id} className="bg-white rounded-xl p-3 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-gray-800 text-sm">{s.nama}</p>
+                      <p className="text-xs text-gray-500">{s.nis} - {s.kelas}</p>
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => editStudent(s)}
+                        className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-lg hover:bg-yellow-200"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => deleteStudent(s._id)}
+                        className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-lg hover:bg-red-200"
+                      >
+                        Hapus
+                      </button>
+                      <button
+                        onClick={() => generateCode(s._id, 'student')}
+                        disabled={generatingCode === s._id + 'student'}
+                        className="text-xs bg-primary-100 text-primary-700 px-2 py-1 rounded-lg hover:bg-primary-200"
+                      >
+                        {generatingCode === s._id + 'student' ? '...' : 'Siswa'}
+                      </button>
+                      <button
+                        onClick={() => generateCode(s._id, 'parent')}
+                        disabled={generatingCode === s._id + 'parent'}
+                        className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-lg hover:bg-green-200"
+                      >
+                        {generatingCode === s._id + 'parent' ? '...' : 'Ortu'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -521,6 +582,46 @@ export default function AdminPanel() {
           </div>
         )}
       </div>
+
+      {editingStudent && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm space-y-4">
+            <h3 className="font-semibold text-gray-800">Edit Siswa</h3>
+            <input
+              type="text"
+              placeholder="NIS"
+              value={editForm.nis}
+              onChange={(e) => setEditForm({ ...editForm, nis: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            />
+            <input
+              type="text"
+              placeholder="NISN"
+              value={editForm.nisn}
+              onChange={(e) => setEditForm({ ...editForm, nisn: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            />
+            <input
+              type="text"
+              placeholder="Nama"
+              value={editForm.nama}
+              onChange={(e) => setEditForm({ ...editForm, nama: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            />
+            <select
+              value={editForm.kelas}
+              onChange={(e) => setEditForm({ ...editForm, kelas: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            >
+              {KELAS_LIST.map(k => <option key={k} value={k}>{k}</option>)}
+            </select>
+            <div className="flex gap-2">
+              <button onClick={() => setEditingStudent(null)} className="flex-1 bg-gray-200 py-2 rounded-lg text-sm">Batal</button>
+              <button onClick={saveStudent} className="flex-1 bg-primary-600 text-white py-2 rounded-lg text-sm">Simpan</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

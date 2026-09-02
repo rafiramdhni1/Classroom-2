@@ -17,6 +17,12 @@ export default function Dashboard() {
   const [error, setError] = useState('');
   const [expandedSubject, setExpandedSubject] = useState(null);
   const [rankMode, setRankMode] = useState('class');
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
 
   useEffect(() => {
     fetchDashboard();
@@ -44,7 +50,27 @@ export default function Dashboard() {
             : m
         ),
       }));
-    } catch (err) { /* silent */ }
+    } catch (err) {
+      console.error('Gagal menandai pesan dibaca:', err);
+    }
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+    setPasswordLoading(true);
+    try {
+      await api.post('/auth/change-password', { currentPassword, newPassword: newPasswordInput });
+      setPasswordSuccess('Password berhasil diubah!');
+      setCurrentPassword('');
+      setNewPasswordInput('');
+      setTimeout(() => { setShowChangePassword(false); setPasswordSuccess(''); }, 2000);
+    } catch (err) {
+      setPasswordError(err.response?.data?.error || 'Gagal mengubah password.');
+    } finally {
+      setPasswordLoading(false);
+    }
   };
 
   if (loading) {
@@ -94,6 +120,13 @@ export default function Dashboard() {
             >
               💬
             </a>
+            <button
+              onClick={() => setShowChangePassword(true)}
+              className="bg-white/20 hover:bg-white/30 p-2 rounded-lg transition text-sm"
+              title="Ganti Password"
+            >
+              🔑
+            </button>
             <button
               onClick={logout}
               className="bg-white/20 hover:bg-white/30 p-2 rounded-lg transition text-sm"
@@ -250,6 +283,41 @@ export default function Dashboard() {
           ))}
         </div>
       </div>
+
+      {showChangePassword && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm space-y-4">
+            <h3 className="font-semibold text-gray-800">Ganti Password</h3>
+            {passwordError && <div className="bg-red-50 text-red-700 px-3 py-2 rounded-lg text-sm">{passwordError}</div>}
+            {passwordSuccess && <div className="bg-green-50 text-green-700 px-3 py-2 rounded-lg text-sm">{passwordSuccess}</div>}
+            <form onSubmit={handleChangePassword} className="space-y-3">
+              <input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="Password saat ini"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                required
+              />
+              <input
+                type="password"
+                value={newPasswordInput}
+                onChange={(e) => setNewPasswordInput(e.target.value)}
+                placeholder="Password baru (min. 6 karakter)"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                minLength={6}
+                required
+              />
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setShowChangePassword(false)} className="flex-1 bg-gray-200 py-2 rounded-lg text-sm">Batal</button>
+                <button type="submit" disabled={passwordLoading} className="flex-1 bg-primary-600 text-white py-2 rounded-lg text-sm disabled:opacity-50">
+                  {passwordLoading ? 'Menyimpan...' : 'Simpan'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
