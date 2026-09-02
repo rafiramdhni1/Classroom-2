@@ -2,34 +2,12 @@ const express = require('express');
 const { auth } = require('../middleware/auth');
 const Student = require('../models/Student');
 const CourseworkCache = require('../models/CourseworkCache');
+const Grade = require('../models/Grade');
 const AdminMessage = require('../models/AdminMessage');
 
 const router = express.Router();
 
 const SUBJECTS = ['ASJ', 'AIJ', 'TJBL', 'PKDK', 'TJKT'];
-
-function calculateAverages(studentIds, courseworkList) {
-  const averages = {};
-
-  for (const sid of studentIds) {
-    let total = 0;
-    let count = 0;
-
-    for (const cw of courseworkList) {
-      const sub = cw.studentSubmissions.find(
-        s => s.studentId?.toString() === sid.toString()
-      );
-      if (sub && sub.isGraded && sub.grade !== undefined) {
-        total += sub.grade;
-        count++;
-      }
-    }
-
-    averages[sid.toString()] = count > 0 ? total / count : 0;
-  }
-
-  return averages;
-}
 
 function getRank(averages, studentId) {
   const sorted = Object.entries(averages)
@@ -64,12 +42,15 @@ router.get('/', auth, async (req, res) => {
       'studentSubmissions.studentId': student._id,
     });
 
+    const manualGrades = await Grade.find({ studentId: student._id });
+
     const subjectGrades = {};
     let totalScore = 0;
     let totalSubjects = 0;
 
     for (const subject of SUBJECTS) {
       const subjectWorks = allCoursework.filter(w => w.courseAlias === subject);
+      const subjectManual = manualGrades.filter(g => g.subject === subject);
       let subjectTotal = 0;
       let subjectCount = 0;
       const components = [];
@@ -100,6 +81,18 @@ router.get('/', auth, async (req, res) => {
         }
       }
 
+      for (const mg of subjectManual) {
+        subjectTotal += mg.score;
+        subjectCount++;
+        components.push({
+          title: mg.title,
+          score: mg.score,
+          maxScore: mg.maxScore || 100,
+          isGraded: true,
+          type: mg.type,
+        });
+      }
+
       const avgScore = subjectCount > 0 ? Math.round(subjectTotal / subjectCount * 100) / 100 : null;
 
       if (avgScore !== null) {
@@ -120,7 +113,6 @@ router.get('/', auth, async (req, res) => {
       : null;
 
     // --- RANKING OPTIMIZED ---
-    // 1. Ambil semua student ID di kelas dan angkatan
     const [studentsInClass, studentsInAngkatan] = await Promise.all([
       Student.find({ kelas: student.kelas, isActive: true }).select('_id'),
       Student.find({ angkatan: student.angkatan, isActive: true }).select('_id'),
@@ -129,10 +121,7 @@ router.get('/', auth, async (req, res) => {
     const classIds = studentsInClass.map(s => s._id);
     const angkatanIds = studentsInAngkatan.map(s => s._id);
 
-    // 2. Ambil SEMUA coursework untuk siswa di kelas + angkatan (1-2 query)
-    const allIds = [...new Set([...classIds.map(String), ...angkatanIds.map(String)])];
-
-    const [classCoursework, angkatanCoursework] = await Promise.all([
+    const [classCoursework, angkatanCoursework, classManualGrades, angkatanManualGrades] = await Promise.all([
       CourseworkCache.find({
         'studentSubmissions.studentId': { $in: classIds },
       }).select('studentSubmissions.studentId studentSubmissions.isGraded studentSubmissions.grade'),
@@ -141,13 +130,44 @@ router.get('/', auth, async (req, res) => {
             'studentSubmissions.studentId': { $in: angkatanIds },
           }).select('studentSubmissions.studentId studentSubmissions.isGraded studentSubmissions.grade')
         : null,
+      Grade.find({ studentId: { $in: classIds } }).select('studentId score'),
+      angkatanIds.length !== classIds.length
+        ? Grade.find({ studentId: { $in: angkatanIds } }).select('studentId score')
+        : null,
     ]);
 
-    // 3. Hitung rata-rata di memory
-    const classAverages = calculateAverages(classIds, classCoursework);
-    const angkatanAverages = calculateAverages(
+    function calculateAveragesWithManual(ids, coursework, manualGrades) {
+      const averages = {};
+      for (const sid of ids) {
+        let total = 0;
+        let count = 0;
+        for (const cw of coursework) {
+          const sub = cw.studentSubmissions.find(
+            s => s.studentId?.toString() === sid.toString()
+          );
+          if (sub && sub.isGraded && sub.grade !== undefined) {
+            total += sub.grade;
+            count++;
+          }
+        }
+        if (manualGrades) {
+          for (const mg of manualGrades) {
+            if (mg.studentId?.toString() === sid.toString()) {
+              total += mg.score;
+              count++;
+            }
+          }
+        }
+        averages[sid.toString()] = count > 0 ? total / count : 0;
+      }
+      return averages;
+    }
+
+    const classAverages = calculateAveragesWithManual(classIds, classCoursework, classManualGrades);
+    const angkatanAverages = calculateAveragesWithManual(
       angkatanIds,
-      angkatanCoursework || classCoursework
+      angkatanCoursework || classCoursework,
+      angkatanManualGrades || classManualGrades
     );
 
     // 4. Cari rank

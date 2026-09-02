@@ -36,6 +36,15 @@ export default function AdminPanel() {
   const [monitoring, setMonitoring] = useState(null);
   const [monitoringLoading, setMonitoringLoading] = useState(false);
 
+  const [gradeKelas, setGradeKelas] = useState('');
+  const [gradeSubject, setGradeSubject] = useState('');
+  const [gradeData, setGradeData] = useState([]);
+  const [gradeAssignments, setGradeAssignments] = useState([]);
+  const [gradeLoading, setGradeLoading] = useState(false);
+  const [showNewAssignment, setShowNewAssignment] = useState(false);
+  const [newAssignment, setNewAssignment] = useState({ title: '', type: 'tugas' });
+  const [gradeSaving, setGradeSaving] = useState(false);
+
   const KELAS_LIST = ['X-TKJ1', 'X-TKJ2', 'XI-TKJ1', 'XI-TKJ2', 'XII-TKJ1', 'XII-TKJ2'];
 
   useEffect(() => { loadData(); }, []);
@@ -244,6 +253,77 @@ export default function AdminPanel() {
     }
   };
 
+  const loadGrades = async () => {
+    if (!gradeKelas || !gradeSubject) return;
+    setGradeLoading(true);
+    try {
+      const { data } = await api.get(`/grades?kelas=${gradeKelas}&subject=${gradeSubject}`);
+      setGradeData(data.students);
+      setGradeAssignments(data.assignments || []);
+    } catch (err) {
+      console.error('Gagal memuat nilai:', err);
+    } finally {
+      setGradeLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (gradeKelas && gradeSubject) loadGrades();
+  }, [gradeKelas, gradeSubject]);
+
+  const addAssignment = async () => {
+    if (!newAssignment.title.trim()) return;
+    setGradeAssignments(prev => [...prev, newAssignment.title.trim()]);
+    setShowNewAssignment(false);
+    setNewAssignment({ title: '', type: 'tugas' });
+  };
+
+  const updateScore = (studentIdx, assignment, score) => {
+    const val = score === '' ? '' : Math.min(100, Math.max(0, parseInt(score) || 0));
+    setGradeData(prev => {
+      const updated = [...prev];
+      const student = { ...updated[studentIdx] };
+      const grades = [...student.grades];
+      const existingIdx = grades.findIndex(g => g.title === assignment);
+      if (existingIdx >= 0) {
+        grades[existingIdx] = { ...grades[existingIdx], score: val };
+      } else {
+        grades.push({ title: assignment, score: val, type: 'tugas', maxScore: 100 });
+      }
+      student.grades = grades;
+      updated[studentIdx] = student;
+      return updated;
+    });
+  };
+
+  const saveGrades = async () => {
+    setGradeSaving(true);
+    try {
+      const gradesToSave = [];
+      for (const sg of gradeData) {
+        for (const assignment of gradeAssignments) {
+          const g = sg.grades.find(gr => gr.title === assignment);
+          if (g && g.score !== '' && g.score !== undefined && g.score !== null) {
+            gradesToSave.push({
+              studentId: sg.student._id,
+              subject: gradeSubject,
+              title: assignment,
+              type: g.type || 'tugas',
+              score: Number(g.score),
+              maxScore: g.maxScore || 100,
+            });
+          }
+        }
+      }
+      const { data } = await api.post('/grades/bulk', { grades: gradesToSave });
+      alert(data.message);
+    } catch (err) {
+      alert('Gagal menyimpan: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setGradeSaving(false);
+    }
+  };
+
   const connectGoogle = async () => {
     try {
       const { data } = await api.get('/auth/google');
@@ -320,6 +400,7 @@ export default function AdminPanel() {
       <div className="px-4 flex gap-2 overflow-x-auto pb-2 mt-2">
         {[
           { key: 'students', label: 'Siswa' },
+          { key: 'grades', label: 'Input Nilai' },
           { key: 'messages', label: 'Pesan' },
           { key: 'codes', label: 'Kode Aktivasi' },
           { key: 'import', label: 'Import' },
@@ -421,6 +502,165 @@ export default function AdminPanel() {
                 </button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Grades Tab */}
+        {tab === 'grades' && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl p-4 shadow-sm space-y-3">
+              <h3 className="font-semibold text-gray-800">Input Nilai Manual</h3>
+              <div className="flex gap-2">
+                <select
+                  value={gradeKelas}
+                  onChange={(e) => setGradeKelas(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                >
+                  <option value="">Pilih Kelas</option>
+                  {KELAS_LIST.map(k => <option key={k} value={k}>{k}</option>)}
+                </select>
+                <select
+                  value={gradeSubject}
+                  onChange={(e) => setGradeSubject(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                >
+                  <option value="">Pilih Mata Pelajaran</option>
+                  <option value="ASJ">ASJ</option>
+                  <option value="AIJ">AIJ</option>
+                  <option value="TJBL">TJBL</option>
+                  <option value="PKDK">PKDK</option>
+                  <option value="TJKT">TJKT</option>
+                </select>
+              </div>
+            </div>
+
+            {gradeKelas && gradeSubject && (
+              <>
+                <div className="bg-white rounded-xl p-4 shadow-sm">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-semibold text-gray-800 text-sm">Komponen Nilai</h4>
+                    <button
+                      onClick={() => setShowNewAssignment(!showNewAssignment)}
+                      className="text-xs bg-primary-100 text-primary-700 px-3 py-1 rounded-lg hover:bg-primary-200"
+                    >
+                      + Tambah
+                    </button>
+                  </div>
+
+                  {showNewAssignment && (
+                    <div className="flex gap-2 mb-3">
+                      <input
+                        type="text"
+                        placeholder="Nama (contoh: Tugas 1, UTS, UAS)"
+                        value={newAssignment.title}
+                        onChange={(e) => setNewAssignment({ ...newAssignment, title: e.target.value })}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      />
+                      <select
+                        value={newAssignment.type}
+                        onChange={(e) => setNewAssignment({ ...newAssignment, type: e.target.value })}
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      >
+                        <option value="tugas">Tugas</option>
+                        <option value="quiz">Quiz</option>
+                        <option value="uts">UTS</option>
+                        <option value="uas">UAS</option>
+                      </select>
+                      <button
+                        onClick={addAssignment}
+                        className="bg-primary-600 text-white px-3 py-2 rounded-lg text-sm"
+                      >
+                        Tambah
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-1">
+                    {gradeAssignments.map((a, i) => (
+                      <span key={i} className="bg-gray-100 text-gray-700 text-xs px-2 py-1 rounded-full">{a}</span>
+                    ))}
+                    {gradeAssignments.length === 0 && (
+                      <p className="text-xs text-gray-400">Belum ada komponen. Klik "+ Tambah" untuk menambahkan.</p>
+                    )}
+                  </div>
+                </div>
+
+                {gradeLoading ? (
+                  <div className="text-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
+                  </div>
+                ) : gradeData.length > 0 ? (
+                  <>
+                    <div className="bg-white rounded-xl shadow-sm overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-gray-50">
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 sticky left-0 bg-gray-50">Nama</th>
+                            {gradeAssignments.map((a, i) => (
+                              <th key={i} className="px-3 py-2 text-center text-xs font-semibold text-gray-500 min-w-[80px]">{a}</th>
+                            ))}
+                            <th className="px-3 py-2 text-center text-xs font-semibold text-gray-500">Rata-rata</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {gradeData.map((sg, si) => {
+                            const scores = gradeAssignments.map(a => {
+                              const g = sg.grades.find(gr => gr.title === a);
+                              return g && g.score !== '' && g.score !== undefined ? Number(g.score) : null;
+                            }).filter(s => s !== null);
+                            const avg = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : '-';
+                            return (
+                              <tr key={sg.student._id} className="border-t border-gray-100 hover:bg-gray-50">
+                                <td className="px-3 py-2 sticky left-0 bg-white hover:bg-gray-50">
+                                  <p className="font-medium text-gray-800 text-xs">{sg.student.nama}</p>
+                                  <p className="text-xs text-gray-400">{sg.student.nis}</p>
+                                </td>
+                                {gradeAssignments.map((a, ai) => {
+                                  const g = sg.grades.find(gr => gr.title === a);
+                                  return (
+                                    <td key={ai} className="px-2 py-1 text-center">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        max="100"
+                                        value={g?.score ?? ''}
+                                        onChange={(e) => updateScore(si, a, e.target.value)}
+                                        className="w-16 px-1 py-1 border border-gray-200 rounded text-center text-xs focus:ring-1 focus:ring-primary-500 outline-none"
+                                      />
+                                    </td>
+                                  );
+                                })}
+                                <td className="px-3 py-2 text-center">
+                                  <span className={`text-xs font-bold ${
+                                    avg >= 80 ? 'text-green-600' : avg >= 60 ? 'text-yellow-600' : typeof avg === 'number' ? 'text-red-600' : 'text-gray-400'
+                                  }`}>
+                                    {avg}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <button
+                      onClick={saveGrades}
+                      disabled={gradeSaving}
+                      className="w-full bg-primary-600 text-white py-3 rounded-lg font-medium hover:bg-primary-700 text-sm disabled:opacity-50"
+                    >
+                      {gradeSaving ? 'Menyimpan...' : `Simpan Semua Nilai (${gradeData.length} siswa)`}
+                    </button>
+                  </>
+                ) : (
+                  <p className="text-center text-gray-500 text-sm py-8">Tidak ada data siswa untuk kelas ini.</p>
+                )}
+              </>
+            )}
+
+            {!gradeKelas || !gradeSubject ? (
+              <p className="text-center text-gray-500 text-sm py-8">Pilih kelas dan mata pelajaran untuk mulai input nilai.</p>
+            ) : null}
           </div>
         )}
 
