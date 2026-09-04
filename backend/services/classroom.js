@@ -13,7 +13,6 @@ const SUBJECT_ALIAS_MAP = {
 
 const SCOPES = [
   'https://www.googleapis.com/auth/classroom.courses.readonly',
-  'https://www.googleapis.com/auth/classroom.coursework.students.readonly',
   'https://www.googleapis.com/auth/classroom.rosters.readonly',
 ];
 
@@ -74,6 +73,7 @@ async function syncAllCourses(userId) {
 
   console.log(`[Classroom Sync] Ditemukan ${courses.length} kursus`);
 
+  let synced = 0;
   for (const course of courses) {
     const alias = detectSubjectAlias(course.name);
     if (!alias) {
@@ -83,11 +83,67 @@ async function syncAllCourses(userId) {
 
     console.log(`[Classroom Sync] Sinkron kursus: ${course.name} (${alias})`);
 
-    await syncCourseWork(classroom, course, alias);
+    try {
+      const courseworkRes = await classroom.courses.courseWork.list({
+        courseId: course.id,
+        orderBy: 'dueDate desc',
+        pageSize: 100,
+      });
+
+      const courseworkList = courseworkRes.data.courseWork || [];
+
+      for (const work of courseworkList) {
+        let submissions = [];
+        try {
+          const submissionsRes = await classroom.courses.courseWork.studentSubmissions.list({
+            courseId: course.id,
+            courseWorkId: work.id,
+            pageSize: 100,
+          });
+          submissions = (submissionsRes.data.studentSubmissions || []).map(sub => ({
+            classroomStudentId: sub.userId,
+            state: sub.state,
+            late: sub.late,
+            grade: sub.shortAnswerSubmission?.grade || sub.multipleChoiceSubmission?.grade || undefined,
+            submittedAt: sub.updateTime ? new Date(sub.updateTime) : undefined,
+            isGraded: sub.state === 'TURNED_IN' && (sub.shortAnswerSubmission?.grade !== undefined || sub.multipleChoiceSubmission?.grade !== undefined),
+            gradeComponents: [],
+          }));
+        } catch (subErr) {
+          console.log(`[Classroom Sync] Gagal ambil submissions: ${subErr.message}`);
+        }
+
+        const dueDate = work.dueDate
+          ? new Date(work.dueDate.year, work.dueDate.month - 1, work.dueDate.day,
+            work.dueTime?.hours || 23, work.dueTime?.minutes || 59)
+          : undefined;
+
+        await CourseworkCache.findOneAndUpdate(
+          { classroomCourseId: course.id, classroomWorkId: work.id },
+          {
+            classroomCourseId: course.id,
+            classroomWorkId: work.id,
+            title: work.title,
+            description: work.description || '',
+            courseName: course.name,
+            courseAlias: alias,
+            dueDate,
+            maxPoints: work.maxPoints || 100,
+            workType: work.workType,
+            studentSubmissions: submissions,
+            lastSyncedAt: new Date(),
+          },
+          { upsert: true, new: true }
+        );
+      }
+      synced++;
+    } catch (err) {
+      console.log(`[Classroom Sync] Error kursus ${course.name}: ${err.message}`);
+    }
   }
 
-  console.log('[Classroom Sync] Selesai.');
-  return { coursesFound: courses.length };
+  console.log(`[Classroom Sync] Selesai. ${synced}/${courses.length} kursus berhasil.`);
+  return { coursesFound: courses.length, synced };
 }
 
 async function syncCourseWork(classroom, course, alias) {
