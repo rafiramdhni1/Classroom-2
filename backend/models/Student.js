@@ -4,12 +4,12 @@ const studentSchema = new mongoose.Schema({
   nis: {
     type: String,
     required: true,
-    unique: true,
     trim: true,
   },
   nisn: {
     type: String,
     required: true,
+    unique: true,
     trim: true,
   },
   nama: {

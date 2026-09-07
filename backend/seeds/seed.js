@@ -58,8 +58,8 @@ async function seed() {
     console.log('');
 
     console.log(`\n✅ ${studentsBatch.length} siswa, ${usersBatch.length} user`);
-    console.log('Login siswa:  NIS=240001, Password=240001');
-    console.log('Login ortu:   NIS=240001-OT, Password=240001');
+    console.log('Login siswa:  NISN=00240001, Password=240001');
+    console.log('Login ortu:   NISN=00240001-OT, Password=240001');
 
     process.exit(0);
   } catch (error) {

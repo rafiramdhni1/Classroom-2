@@ -131,7 +131,7 @@ router.post('/activation-codes', adminOnly, validate(createActivationCodeSchema)
       return res.status(404).json({ error: 'Siswa tidak ditemukan.' });
     }
 
-    const code = `${student.nis}-${chatType === 'parent' ? 'OT' : 'ST'}-${cryptoRandom(6)}`;
+    const code = `${student.nisn}-${chatType === 'parent' ? 'OT' : 'ST'}-${cryptoRandom(6)}`;
     const activationCode = new ActivationCode({
       code,
       studentId,
@@ -164,7 +164,7 @@ router.post('/activation-codes/bulk', adminOnly, async (req, res) => {
     const codes = [];
 
     for (const student of students) {
-      const code = `${student.nis}-${chatType === 'parent' ? 'OT' : 'ST'}-${cryptoRandom(6)}`;
+      const code = `${student.nisn}-${chatType === 'parent' ? 'OT' : 'ST'}-${cryptoRandom(6)}`;
       const activationCode = new ActivationCode({
         code,
         studentId: student._id,
@@ -172,7 +172,7 @@ router.post('/activation-codes/bulk', adminOnly, async (req, res) => {
         expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       });
       await activationCode.save();
-      codes.push({ code, nama: student.nama, nis: student.nis, kelas: student.kelas });
+      codes.push({ code, nama: student.nama, nisn: student.nisn, kelas: student.kelas });
     }
 
     res.status(201).json({
@@ -210,17 +210,17 @@ router.post('/students/bulk-create', adminOnly, validate(bulkCreateSchema), asyn
     const angkatanMap = { X: 10, XI: 11, XII: 12 };
 
     for (const s of students) {
-      const existing = await Student.findOne({ nis: s.nis });
+      const existing = await Student.findOne({ nisn: s.nisn });
       if (existing) {
-        results.push({ nis: s.nis, status: 'sudah_ada' });
+        results.push({ nisn: s.nisn, status: 'sudah_ada' });
         continue;
       }
 
       const angkatanMatch = s.kelas?.match(/^(\w+)-TKJ/);
 
       const student = new Student({
-        nis: s.nis,
-        nisn: s.nisn || s.nis,
+        nis: s.nis || s.nisn,
+        nisn: s.nisn,
         nama: s.nama,
         kelas: s.kelas,
         angkatan: angkatanMap[angkatanMatch?.[1]] || s.angkatan || 2024,
@@ -229,11 +229,11 @@ router.post('/students/bulk-create', adminOnly, validate(bulkCreateSchema), asyn
       });
       await student.save();
 
-      const plainPassword = defaultPassword || s.nis;
+      const plainPassword = defaultPassword || s.nisn;
 
       const user = new User({
-        nis: s.nis,
-        nisn: s.nisn || s.nis,
+        nis: s.nis || s.nisn,
+        nisn: s.nisn,
         password: plainPassword,
         role: 'student',
         studentId: student._id,
@@ -242,8 +242,8 @@ router.post('/students/bulk-create', adminOnly, validate(bulkCreateSchema), asyn
 
       if (s.orangTuaNama) {
         const parentUser = new User({
-          nis: `${s.nis}-OT`,
-          nisn: s.nisn || s.nis,
+          nis: `${s.nisn}-OT`,
+          nisn: `${s.nisn}-OT`,
           password: plainPassword,
           role: 'parent',
           studentId: student._id,
@@ -251,7 +251,7 @@ router.post('/students/bulk-create', adminOnly, validate(bulkCreateSchema), asyn
         await parentUser.save();
       }
 
-      results.push({ nis: s.nis, nama: s.nama, status: 'berhasil' });
+      results.push({ nisn: s.nisn, nama: s.nama, status: 'berhasil' });
     }
 
     const berhasil = results.filter(r => r.status === 'berhasil').length;

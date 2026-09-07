@@ -1,16 +1,28 @@
 # Sistem Informasi Akademik SMK TKJ
-## Ringkasan Alur Kerja untuk Presentasi
+## Dokumentasi Presentasi Lengkap
 
 ---
 
 ## 1. Gambaran Umum
 
-Sistem informasi akademik berbasis web yang mengelola data siswa, nilai, dan notifikasi otomatis. Terintegrasi dengan Google Classroom (opsional) dan Telegram untuk notifikasi real-time.
+Sistem informasi akademik berbasis web untuk SMK TKJ (Teknik Jaringan Komputer). Mengelola data siswa, nilai, dan notifikasi otomatis. Terintegrasi dengan Google Classroom dan Telegram.
 
-**Tujuan:**
-- Memudahkan admin mengelola data siswa dan nilai
-- Memberikan notifikasi otomatis ke siswa/orang tua melalui Telegram
-- Menampilkan dashboard nilai dan ranking secara real-time
+**Fitur Utama:**
+- Login dengan NIS + Password
+- Dashboard nilai dan ranking untuk siswa/orang tua
+- Admin Panel lengkap (8 tab fitur)
+- Input nilai manual (spreadsheet-like UI)
+- Sinkronisasi Google Classroom (otomatis)
+- Telegram bot + notifikasi otomatis
+- Backup database otomatis
+- Monitoring sistem real-time
+- CI/CD dengan GitHub Actions
+
+**Scope Sekolah:**
+- 3 kelas: X, XI, XII
+- 2 rombel per kelas: A, B
+- 36 siswa per rombel = 216 siswa total
+- 5 mata pelajaran: ASJ, AIJ, TJBL, PKDK, TJKT
 
 ---
 
@@ -27,8 +39,13 @@ Sistem informasi akademik berbasis web yang mengelola data siswa, nilai, dan not
        │              │               │               │
        ▼              ▼               ▼               ▼
 ┌─────────────────────────────────────────────────────────────┐
+│                   CLOUDFLARE TUNNEL                         │
+│          (akses dari mana saja, gratis, tanpa domain)       │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+┌──────────────────────────┴──────────────────────────────────┐
 │                      API LAYER (Express.js)                 │
-│  Port 5000 + Rate Limiting + JWT Auth + Zod Validation     │
+│  Port 5000 + Rate Limiting + JWT Auth                       │
 ├──────────┬──────────┬──────────┬──────────┬────────────────┤
 │ /auth    │/dashboard│/admin    │/grades   │/tools          │
 │ Login    │ Nilai    │ Siswa    │ Input    │ Backup         │
@@ -45,8 +62,8 @@ Sistem informasi akademik berbasis web yang mengelola data siswa, nilai, dan not
 │ (Auth)   │ (Data)   │ (Manual) │ workCache│ (Pesan)        │
 │          │          │          │ (GC)     │                │
 ├──────────┼──────────┼──────────┼──────────┼────────────────┤
-│ ChatId   │ Activation│ Backup  │ Logs     │                │
-│ (Telegram)│ Code    │ (JSON)  │ (Winston)│                │
+│ ChatId   │ Activation│ Logs    │ Requests │                │
+│ (Telegram)│ Code    │ (Error) │ (Track)  │                │
 └──────────┴──────────┴──────────┴──────────┴────────────────┘
 ```
 
@@ -56,116 +73,203 @@ Sistem informasi akademik berbasis web yang mengelola data siswa, nilai, dan not
 
 | Layer | Teknologi | Kegunaan |
 |-------|-----------|----------|
-| **Frontend** | React 18 + Tailwind CSS | UI Dashboard & Admin Panel |
+| **Frontend** | React 18 + Tailwind CSS + Vite | UI Dashboard & Admin Panel |
 | **Backend** | Node.js + Express.js | REST API Server |
 | **Database** | MongoDB + Mongoose | Penyimpanan Data |
-| **Auth** | JWT (JSON Web Token) | Autentikasi & Otorisasi |
-| **Bot** | Telegram Bot API | Notifikasi via Telegram |
+| **Auth** | JWT (JSON Web Token) + bcrypt | Autentikasi & Enkripsi Password |
+| **Bot** | Telegram Bot API (long-polling) | Notifikasi via Telegram |
 | **Classroom** | Google Classroom API (OAuth2) | Sinkronisasi Nilai |
-| **Monitoring** | Winston + Custom Logger | Logging & Error Tracking |
+| **Monitoring** | Custom Logger | Logging & Error Tracking |
 | **CI/CD** | GitHub Actions + deploy.bat | Otomasi Deploy |
-| **Backup** | Node.js fs + MongoDB Driver | Backup Database |
+| **Backup** | Node.js native (JSON export) | Backup Database |
+| **Tunnel** | Cloudflare Tunnel | Akses publik gratis |
 
 ---
 
-## 4. Model Data (Database Schema)
+## 4. Struktur File
+
+```
+smk-akademik/
+├── backend/
+│   ├── config/
+│   │   └── db.js              # Koneksi MongoDB
+│   ├── middleware/
+│   │   ├── auth.js            # JWT + admin middleware
+│   │   └── errorHandler.js    # Global error handler
+│   ├── models/
+│   │   ├── User.js            # Model user (admin/siswa/orang tua)
+│   │   ├── Student.js         # Model data siswa
+│   │   ├── Grade.js           # Model nilai manual
+│   │   ├── CourseworkCache.js # Cache data Google Classroom
+│   │   ├── ChatId.js          # Mapping Telegram chat ID
+│   │   ├── ActivationCode.js  # Kode aktivasi
+│   │   └── AdminMessage.js    # Pesan dari admin
+│   ├── routes/
+│   │   ├── auth.js            # Login, OTP, Google OAuth
+│   │   ├── dashboard.js       # Dashboard siswa
+│   │   ├── admin.js           # CRUD admin
+│   │   ├── grades.js          # Input nilai manual
+│   │   ├── classroom.js       # Google Classroom sync
+│   │   ├── tools.js           # Backup & monitoring
+│   │   └── webhook.js         # n8n webhook
+│   ├── services/
+│   │   ├── classroom.js       # Google OAuth + Classroom API
+│   │   ├── telegramBot.js     # Telegram bot commands
+│   │   ├── notification.js    # Auto notification
+│   │   ├── backup.js          # Backup system
+│   │   └── monitoring.js      # Monitoring system
+│   ├── backups/               # Folder penyimpanan backup
+│   ├── server.js              # Entry point utama
+│   ├── bot-poll.js            # Telegram bot runner
+│   ├── seed.js                # Database seeder
+│   ├── .env                   # Environment variables
+│   └── package.json
+├── frontend/
+│   ├── src/
+│   │   ├── pages/
+│   │   │   ├── Login.jsx      # Halaman login
+│   │   │   ├── Dashboard.jsx  # Dashboard siswa/orang tua
+│   │   │   └── AdminPanel.jsx # Panel admin (8 tab)
+│   │   ├── contexts/
+│   │   │   └── AuthContext.jsx # State autentikasi
+│   │   ├── utils/
+│   │   │   └── api.js         # Axios instance
+│   │   ├── components/
+│   │   │   ├── Navbar.jsx     # Navigasi
+│   │   │   ├── Modal.jsx      # Modal popup
+│   │   │   └── ...
+│   │   └── App.jsx            # Router
+│   ├── vite.config.js         # Vite config
+│   ├── tailwind.config.js     # Tailwind config
+│   └── package.json
+├── .github/
+│   └── workflows/
+│       └── deploy.yml         # GitHub Actions CI/CD
+├── deploy.bat                 # 1-click deploy script
+├── DOKUMENTASI.md             # Dokumentasi lengkap
+└── .gitignore
+```
+
+---
+
+## 5. Model Data (Database Schema)
 
 ### User (Akun Login)
-```
+```javascript
 {
-  nis: String (unique)        // Nomor Induk Siswa
-  password: String (bcrypt)   // Password terenkripsi
-  role: "admin" | "student" | "parent"
-  studentId: ObjectId (ref: Student)
-  mustChangePassword: Boolean
-  resetPasswordOtp: String
-  googleAccessToken: String
-  googleRefreshToken: String
+  nis: String (unique),         // Nomor Induk Siswa
+  password: String (bcrypt),    // Password terenkripsi
+  role: "admin" | "student" | "parent",
+  namaLengkap: String,          // Nama lengkap
+  kelas: String,                // "X", "XI", "XII"
+  rombel: String,               // "A" atau "B"
+  
+  // Google OAuth (hanya admin)
+  googleAccessToken: String,    // Token akses Google
+  googleRefreshToken: String,   // Token refresh Google
+  googleEmail: String,          // Email Google
+  googleConnected: Boolean,     // Sudah connect Google
+  
+  isActive: Boolean,
+  createdAt: Date,
+  updatedAt: Date
 }
 ```
 
 ### Student (Data Siswa)
-```
+```javascript
 {
-  nis: String (unique)
-  nisn: String
-  nama: String
-  kelas: "X-TKJ1" | "X-TKJ2" | "XI-TKJ1" | ...
-  angkatan: Number
-  orangTuaNama: String
+  nis: String (unique),
+  nama: String,
+  kelas: String,                // "X", "XI", "XII"
+  rombel: String,               // "A" atau "B"
+  classroomId: String,          // ID Google Classroom
   isActive: Boolean
 }
 ```
 
 ### Grade (Nilai Manual)
-```
+```javascript
 {
-  studentId: ObjectId (ref: Student)
-  subject: "ASJ" | "AIJ" | "TJBL" | "PKDK" | "TJKT"
-  title: String               // "Tugas 1", "UTS", "UAS"
-  type: "tugas" | "quiz" | "uts" | "uas"
-  score: Number (0-100)
-  maxScore: Number (default: 100)
-  gradedBy: ObjectId (ref: User)
+  studentId: ObjectId (ref: Student),
+  nis: String,
+  nama: String,
+  kelas: String,
+  rombel: String,
+  mataPelajaran: String,        // "ASJ", "AIJ", "TJBL", "PKDK", "TJKT"
+  tipe: String,                 // "UTS", "UAS", "TUGAS", "PRAKTIK"
+  nilai: Number (0-100),
+  semester: String,             // "Ganjil", "Genap"
+  tahunAjaran: String,          // "2024/2025"
+  inputBy: ObjectId (ref: User)
 }
 ```
 
 ### CourseworkCache (Data Google Classroom)
-```
+```javascript
 {
-  classroomCourseId: String
-  classroomWorkId: String
-  title: String
-  courseAlias: "ASJ" | "AIJ" | ...
-  workType: "ASSIGNMENT" | "QUIZ" | ...
+  classroomCourseId: String,    // ID kelas dari Google
+  classroomWorkId: String,      // ID tugas dari Google
+  title: String,                // Judul tugas
+  description: String,
+  courseName: String,           // Nama kelas di Google
+  courseAlias: String,          // "ASJ", "AIJ", dll (auto-detect)
+  dueDate: Date,
+  maxPoints: Number,
+  workType: String,             // "ASSIGNMENT", "QUIZ", "QUESTION"
   studentSubmissions: [{
-    studentId: ObjectId
-    state: "NEW" | "TURNED_IN" | "RETURNED"
-    grade: Number
-  }]
+    classroomStudentId: String,
+    state: String,              // "TURNED_IN", "RETURNED", "MISSING"
+    late: Boolean,
+    grade: Number,
+    submittedAt: Date,
+    isGraded: Boolean
+  }],
+  lastSyncedAt: Date
 }
 ```
 
 ### ChatId (Telegram User)
-```
+```javascript
 {
-  studentId: ObjectId (ref: Student)
-  chatId: Number              // Telegram Chat ID
-  chatType: "student" | "parent"
-  isActive: Boolean
-  activatedAt: Date
+  nis: String,
+  chatId: Number,               // Telegram Chat ID
+  nama: String,
+  kelas: String,
+  rombel: String,
+  role: String                  // "student" | "parent"
 }
 ```
 
 ### ActivationCode
-```
+```javascript
 {
-  code: String (unique)       // "X-TKJ1-001-ST-A1B2C3"
-  studentId: ObjectId
-  chatType: "student" | "parent"
-  isUsed: Boolean
-  expiresAt: Date
+  code: String (unique),        // crypto.randomBytes (hex)
+  nis: String,
+  isUsed: Boolean,
+  usedBy: Number,               // Telegram Chat ID
+  createdAt: Date,
+  expiresAt: Date               // 24 jam
 }
 ```
 
 ### AdminMessage
-```
+```javascript
 {
-  title: String
-  content: String
-  priority: "low" | "normal" | "high" | "urgent"
-  isGlobal: Boolean
-  targetKelas: [String]
-  targetAngkatan: [Number]
-  targetStudents: [ObjectId]
-  isReadBy: [{ studentId, readAt }]
+  title: String,
+  content: String,
+  targetKelas: String,          // "ALL" atau "X", "XI", "XII"
+  targetRombel: String,         // "ALL" atau "A", "B"
+  priority: String,             // "low", "medium", "high"
+  createdAt: Date
 }
 ```
 
 ---
 
-## 5. Alur Autentikasi
+## 6. Alur Autentikasi
 
+### Login
 ```
 ┌─────────┐     ┌─────────┐     ┌──────────┐     ┌─────────┐
 │  Login  │────▶│  Cek    │────▶│ Generate │────▶│ Kirim   │
@@ -181,34 +285,42 @@ Sistem informasi akademik berbasis web yang mengelola data siswa, nilai, dan not
                 │ Password │
                 │ salah"   │
                 └──────────┘
+```
 
-Alur Lupa Password:
+### Lupa Password
+```
 ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
 │ Input    │───▶│ Kirim    │───▶│ User     │───▶│ Reset    │
 │ NIS      │    │ OTP via  │    │ Input    │    │ Password │
 │          │    │ Telegram │    │ OTP      │    │ Baru     │
 └──────────┘    └──────────┘    └──────────┘    └──────────┘
-                     │
-                     │ Telegram tidak aktif
-                     ▼
-                ┌──────────┐    ┌──────────┐
-                │ Verifikasi│───▶│ Kirim   │
-                │ NISN +   │    │ OTP     │
-                │ Nama Ortu│    │ Lagi    │
-                └──────────┘    └──────────┘
+```
+
+### Password Hashing (bcrypt)
+```
+1. User input: "rahasia123"
+2. Backend hash: bcrypt.hash("rahasia123", 10)
+   → "$2b$10$N9qo8uLOickgx2ZMRZoMye..."
+3. Simpan hash ke MongoDB (bukan password asli!)
+4. Saat login: bcrypt.compare("rahasia123", hash)
+   → true (cocok) atau false (tidak cocok)
 ```
 
 ---
 
-## 6. Alur Input Nilai
+## 7. Alur Input Nilai Manual
 
 ```
 Admin Panel → Tab "Input Nilai"
        │
        ▼
 ┌──────────────────┐
-│ Pilih Kelas +    │
-│ Mata Pelajaran   │
+│ Pilih Filter:    │
+│ - Kelas (X/XI/XII)│
+│ - Rombel (A/B)   │
+│ - Mata Pelajaran │
+│ - Tipe (UTS/UAS/Tugas/Praktik)│
+│ - Semester       │
 └────────┬─────────┘
          │
          ▼
@@ -250,7 +362,7 @@ Admin Panel → Tab "Input Nilai"
 
 ---
 
-## 7. Alur Dashboard Siswa
+## 8. Alur Dashboard Siswa
 
 ```
 ┌──────────┐     ┌──────────┐     ┌──────────────────────────┐
@@ -268,27 +380,58 @@ Admin Panel → Tab "Input Nilai"
                    │ Mata     │         │ Kelas &  │         │ dari     │
                    │ Pelajaran│         │ Angkatan │         │ Admin    │
                    └──────────┘         └──────────┘         └──────────┘
-                         │
-                         ▼
-                   ┌──────────┐
-                   │ Expand   │
-                   │ detail   │
-                   │ per      │
-                   │ tugas/   │
-                   │ ujian    │
-                   └──────────┘
 ```
 
 ---
 
-## 8. Alur Notifikasi Telegram
+## 9. Alur Google Classroom
+
+### OAuth 2.0 Connection
+```
+1. Admin klik "Hubungkan dengan Google"
+2. Frontend minta URL → GET /api/auth/google
+3. Backend generate URL:
+   https://accounts.google.com/o/oauth2/v2/auth?
+     client_id=...
+     &redirect_uri=http://localhost:5000/api/auth/google/callback
+     &scope=classroom.courses.readonly+classroom.rosters.readonly
+     &response_type=code
+     &access_type=offline
+     &prompt=consent
+4. User login Google + grant permission
+5. Google redirect ke callback ?code=xxx
+6. Backend tukar code dengan tokens
+7. Simpan tokens ke user di MongoDB
+8. Redirect ke frontend ?google_auth=success
+```
+
+### Sync Flow
+```
+1. Admin klik "Sinkronisasi Sekarang"
+2. POST /api/classroom/sync
+3. Backend fetch kelas dari Google Classroom API
+4. Deteksi alias otomatis dari nama kelas:
+   - "ASJ" → ASJ ✅
+   - "X ASJ" → ASJ ✅
+   - "TKJ" → ❌ (tidak terdeteksi)
+5. Untuk setiap kelas:
+   a. Fetch tugas (courseWork)
+   b. Fetch submissions siswa (try/catch)
+   c. Simpan ke MongoDB (CourseworkCache)
+6. Return jumlah kelas tersync
+```
+
+**Catatan:**
+- Akun Google (`tamasukajajan@gmail.com`) harus ditambahkan sebagai **pengajar** di kelas Google Classroom milik guru lain
+- Scope `student-submissions` bersifat restricted (tidak perlu untuk sync dasar)
+
+---
+
+## 10. Alur Notifikasi Telegram
 
 ```
 ┌────────────────────────────────────────────────────────────┐
-│                     NOTIFICATION FLOW                       │
-├────────────────────────────────────────────────────────────┤
-│                                                            │
-│  [Cron Job Jam 17:00] atau [Manual via n8n]                │
+│  [Cron Job Jam 17:00 Weekdays]                             │
 │         │                                                  │
 │         ▼                                                  │
 │  ┌──────────────┐     ┌──────────────┐                    │
@@ -308,143 +451,116 @@ Admin Panel → Tab "Input Nilai"
 │                    │ Inline Keyboard  │                    │
 │                    │ [Buka Dashboard] │                    │
 │                    └──────────────────┘                    │
-│                                                            │
 └────────────────────────────────────────────────────────────┘
+```
 
-Contoh Pesan:
-╔══════════════════════════════════════╗
-║ 📋 *Tugas Belum Selesai*            ║
-║                                      ║
-║ Halo, Ahmad Fauzi!                   ║
-║ Kamu memiliki 2 tugas yang belum     ║
-║ dikumpulkan:                         ║
-║                                      ║
-║ • ASJ: Tugas Konfigurasi Router      ║
-║ • TJKT: Praktikum Subnetting         ║
-║                                      ║
-║ [📊 Buka Dashboard]                  ║
-╚══════════════════════════════════════╝
+**Contoh Pesan:**
+```
+📋 Tugas Belum Selesai
+
+Halo, Ahmad Fauzi!
+Kamu memiliki 2 tugas yang belum dikumpulkan:
+
+• ASJ: Tugas Konfigurasi Router
+• TJKT: Praktikum Subnetting
+
+[Buka Dashboard]
 ```
 
 ---
 
-## 9. Alur Aktivasi Telegram
+## 11. Alur Aktivasi Telegram
 
 ```
 ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
 │ Admin Panel  │───▶│ Generate     │───▶│ Bagikan kode │
 │ Tab "Kode    │    │ Kode Aktivasi│    │ ke Siswa/    │
-│ Aktivasi"    │    │ (unique)     │    │ Orang Tua    │
+│ Aktivasi"    │    │ (crypto.     │    │ Orang Tua    │
+│              │    │ randomBytes) │    │              │
 └──────────────┘    └──────────────┘    └──────┬───────┘
                                                │
                                                ▼
 ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
 │ Bot kirim    │◀───│ Bot verifikasi│◀───│ User kirim   │
-│ pesan sukses │    │ kode di DB   │    │ "AKTIF       │
-│ + dashboard  │    │              │    │  X-TKJ1-..." │
+│ pesan sukses │    │ kode di DB   │    │ /aktivasi    │
+│ + dashboard  │    │              │    │ <kode>       │
 │ link         │    │              │    │              │
 └──────────────┘    └──────────────┘    └──────────────┘
 ```
 
 ---
 
-## 10. Alur Backup Database
+## 12. Alur Backup Database
 
 ```
 ┌────────────────────────────────────────────────────────────┐
-│                    BACKUP SYSTEM                            │
-├────────────────────────────────────────────────────────────┤
-│                                                            │
 │  [Otomatis Jam 02:00]      [Manual via Admin Panel]        │
 │         │                          │                       │
 │         ▼                          ▼                       │
 │  ┌─────────────────────────────────────────┐              │
 │  │ 1. Baca semua collections dari MongoDB  │              │
 │  │ 2. Export ke JSON per collection        │              │
-│  │ 3. Simpan ke backend/backups/<timestamp>│              │
-│  │ 4. Buat manifest.json (metadata)       │              │
-│  │ 5. Cleanup backup lama (>30)           │              │
+│  │ 3. Simpan ke backend/backups/           │              │
+│  │ 4. Hapus backup lama (>30 hari)         │              │
 │  └─────────────────────────────────────────┘              │
 │                                                            │
-│  Struktur Backup:                                          │
-│  backend/backups/                                          │
-│  ├── auto_2026-09-02T02-00-00/                            │
-│  │   ├── manifest.json                                     │
-│  │   ├── users.json                                        │
-│  │   ├── students.json                                     │
-│  │   ├── grades.json                                       │
-│  │   ├── courseworkcaches.json                             │
-│  │   ├── chatids.json                                      │
-│  │   └── adminmessages.json                                │
-│  └── manual_2026-09-02T15-26-06/                          │
-│      └── ...                                               │
-│                                                            │
+│  Format: backup-YYYY-MM-DD-HHmmss.json                    │
+│  Isi: users, students, grades, courseworkcaches,           │
+│        chatids, activationcodes, adminmessages             │
 └────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 11. Alur Monitoring
+## 13. Alur Monitoring
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│                   MONITORING SYSTEM                         │
-├────────────────────────────────────────────────────────────┤
-│                                                            │
-│  Request masuk                                             │
-│       │                                                    │
-│       ▼                                                    │
-│  ┌──────────────────┐                                     │
-│  │ Track:           │                                     │
-│  │ - Method + URL   │                                     │
-│  │ - Status code    │                                     │
-│  │ - Duration (ms)  │                                     │
-│  │ - Timestamp      │                                     │
-│  └────────┬─────────┘                                     │
-│           │                                                │
-│           ▼                                                │
-│  ┌──────────────────┐     ┌──────────────────┐           │
-│  │ Simpan di memory │────▶│ Log ke file      │           │
-│  │ (request stats)  │     │ (Winston)        │           │
-│  └──────────────────┘     └──────────────────┘           │
-│                                                            │
-│  Admin Panel → Tab "Monitoring" → Refresh                  │
-│       │                                                    │
-│       ▼                                                    │
-│  ┌──────────────────────────────────────────┐             │
-│  │ Tampilkan:                               │             │
-│  │ - Uptime server                          │             │
-│  │ - RAM terpakai vs total                  │             │
-│  │ - Status database                        │             │
-│  │ - Total request & error rate             │             │
-│  │ - Top 10 routes (paling sering diakses)  │             │
-│  │ - 20 error terakhir                      │             │
-│  │ - Daftar log files                       │             │
-│  └──────────────────────────────────────────┘             │
-│                                                            │
-└────────────────────────────────────────────────────────────┘
+Request masuk
+     │
+     ▼
+┌──────────────────┐
+│ Track:           │
+│ - Method + URL   │
+│ - Status code    │
+│ - Duration (ms)  │
+│ - Timestamp      │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐     ┌──────────────────┐
+│ Simpan di memory │────▶│ Log error ke DB  │
+│ (request stats)  │     │                  │
+└──────────────────┘     └──────────────────┘
+
+Admin Panel → Tab "Monitoring"
+     │
+     ▼
+┌──────────────────────────────────────────┐
+│ Tampilkan:                               │
+│ - Uptime server                          │
+│ - RAM terpakai vs total                  │
+│ - CPU usage                              │
+│ - Status MongoDB (connected/disconnected)│
+│ - Total request hari ini                 │
+│ - Error log terbaru                      │
+└──────────────────────────────────────────┘
 ```
 
 ---
 
-## 12. Alur CI/CD
+## 14. Alur CI/CD
 
 ```
 ┌────────────────────────────────────────────────────────────┐
-│                    CI/CD PIPELINE                           │
-├────────────────────────────────────────────────────────────┤
-│                                                            │
 │  Developer Push ke GitHub                                  │
 │       │                                                    │
 │       ▼                                                    │
 │  ┌──────────────────┐     ┌──────────────────┐           │
 │  │ GitHub Actions   │────▶│ Self-hosted      │           │
-│  │ (.github/workflows│    │ Runner (PC lokal)│           │
-│  │  /deploy.yml)    │     │                  │           │
+│  │ (deploy.yml)     │     │ Runner (PC lokal)│           │
 │  └──────────────────┘     └────────┬─────────┘           │
 │                                    │                      │
 │                    ┌───────────────┼───────────────┐      │
-│                    │               │               │      │
 │                    ▼               ▼               ▼      │
 │              ┌──────────┐   ┌──────────┐   ┌──────────┐  │
 │              │ git pull │   │ npm      │   │ npm run  │  │
@@ -453,164 +569,203 @@ Contoh Pesan:
 │                                    │               │      │
 │                                    ▼               ▼      │
 │                              ┌──────────┐   ┌──────────┐  │
-│                              │ Stop     │   │ Start    │  │
-│                              │ server   │   │ server   │  │
-│                              │ lama     │   │ baru     │  │
+│                              │ pm2      │   │ pm2      │  │
+│                              │ restart  │   │ start    │  │
 │                              └──────────┘   └──────────┘  │
-│                                              │            │
-│                                              ▼            │
-│                                     ┌──────────────┐     │
-│                                     │ Health Check │     │
-│                                     │ GET /health  │     │
-│                                     └──────────────┘     │
 │                                                            │
 │  Alternatif Manual: deploy.bat                             │
 │  (klik ganda → otomatis pull + build + deploy)            │
-│                                                            │
 └────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 13. Daftar Endpoint API
+## 15. Daftar Endpoint API
 
 ### Auth (`/api/auth`)
 | Method | Endpoint | Fungsi | Auth |
 |--------|----------|--------|------|
-| POST | `/login` | Login | ❌ |
-| POST | `/change-password` | Ganti password | ✅ |
-| POST | `/forgot-password` | Kirim OTP | ❌ |
-| POST | `/verify-otp` | Verifikasi OTP + reset | ❌ |
-| POST | `/fallback-verify` | Verifikasi NISN + nama ortu | ❌ |
-| GET | `/me` | Data user saat ini | ✅ |
-| GET | `/google` | Redirect ke Google OAuth | ✅ |
+| POST | `/login` | Login NIS + Password | ❌ |
+| POST | `/forgot-password` | Kirim OTP ke Telegram | ❌ |
+| POST | `/verify-otp` | Verifikasi OTP | ❌ |
+| POST | `/reset-password` | Reset password baru | ❌ |
+| GET | `/google` | Generate Google OAuth URL | ✅ |
 | GET | `/google/callback` | Handle callback Google | ❌ |
-| POST | `/google/sync` | Sync Google Classroom | ✅ |
-| DELETE | `/google/disconnect` | Putus koneksi Google | ✅ |
+| GET | `/me` | Data user dari token | ✅ |
 
 ### Dashboard (`/api/dashboard`)
 | Method | Endpoint | Fungsi | Auth |
 |--------|----------|--------|------|
-| GET | `/` | Data dashboard siswa | ✅ |
-| PUT | `/messages/:id/read` | Tandai pesan dibaca | ✅ |
-| GET | `/export-csv` | Export nilai ke CSV | ✅ |
+| GET | `/` | Semua data dashboard | ✅ |
+| GET | `/grades` | Nilai (GC + manual) | ✅ |
+| GET | `/ranking` | Peringkat siswa | ✅ |
+| POST | `/change-password` | Ganti password | ✅ |
 
 ### Admin (`/api/admin`)
 | Method | Endpoint | Fungsi | Auth |
 |--------|----------|--------|------|
-| GET | `/students` | List siswa (paginated) | ✅ Admin |
+| GET | `/students` | List semua siswa | ✅ Admin |
+| POST | `/students` | Tambah siswa | ✅ Admin |
 | PUT | `/students/:id` | Edit siswa | ✅ Admin |
 | DELETE | `/students/:id` | Hapus siswa | ✅ Admin |
-| POST | `/students/bulk-create` | Import CSV | ✅ Admin |
+| GET | `/stats` | Statistik | ✅ Admin |
 | GET | `/messages` | List pesan | ✅ Admin |
 | POST | `/messages` | Kirim pesan | ✅ Admin |
 | DELETE | `/messages/:id` | Hapus pesan | ✅ Admin |
-| GET | `/activation-codes` | List kode aktivasi | ✅ Admin |
-| POST | `/activation-codes` | Generate 1 kode | ✅ Admin |
-| POST | `/activation-codes/bulk` | Generate massal | ✅ Admin |
-| GET | `/dashboard-stats` | Statistik admin | ✅ Admin |
+| GET | `/codes` | List kode aktivasi | ✅ Admin |
+| POST | `/codes` | Generate kode | ✅ Admin |
+| DELETE | `/codes/:id` | Hapus kode | ✅ Admin |
+| POST | `/import` | Import Excel | ✅ Admin |
 
 ### Grades (`/api/grades`)
 | Method | Endpoint | Fungsi | Auth |
 |--------|----------|--------|------|
-| GET | `/?kelas=&subject=` | Ambil data nilai | ✅ Admin |
+| GET | `/` | Ambil nilai (filter) | ✅ |
 | POST | `/` | Simpan 1 nilai | ✅ Admin |
-| POST | `/bulk` | Simpan massal | ✅ Admin |
-| DELETE | `/:id` | Hapus 1 nilai | ✅ Admin |
-| DELETE | `/?subject=&title=` | Hapus semua nilai judul | ✅ Admin |
+| POST | `/bulk` | Simpan banyak nilai | ✅ Admin |
+| DELETE | `/:id` | Hapus nilai | ✅ Admin |
+
+### Classroom (`/api/classroom`)
+| Method | Endpoint | Fungsi | Auth |
+|--------|----------|--------|------|
+| POST | `/sync` | Sinkronisasi Google Classroom | ✅ Admin |
+| GET | `/status` | Status koneksi Google | ✅ Admin |
 
 ### Tools (`/api/tools`)
 | Method | Endpoint | Fungsi | Auth |
 |--------|----------|--------|------|
+| POST | `/backup` | Manual backup | ✅ Admin |
 | GET | `/backup/list` | List semua backup | ✅ Admin |
-| POST | `/backup/create` | Buat backup baru | ✅ Admin |
-| POST | `/backup/restore/:name` | Restore backup | ✅ Admin |
-| DELETE | `/backup/:name` | Hapus backup | ✅ Admin |
-| GET | `/monitoring/status` | Status sistem | ✅ Admin |
-| GET | `/monitoring/logs/:file` | Baca file log | ✅ Admin |
+| GET | `/backup/download/:filename` | Download backup | ✅ Admin |
+| DELETE | `/backup/:filename` | Hapus backup | ✅ Admin |
+| GET | `/monitoring` | Status sistem | ✅ Admin |
+| GET | `/monitoring/errors` | Log error | ✅ Admin |
 
 ### Webhook (`/api/webhook`)
 | Method | Endpoint | Fungsi | Auth |
 |--------|----------|--------|------|
-| POST | `/telegram` | Telegram webhook | ❌ |
-| GET | `/sync-and-notify` | Sync + notif (n8n) | Secret |
-| POST | `/sync` | Manual sync | Secret |
-| POST | `/notify` | Manual notif | Secret |
+| POST | `/n8n` | Webhook dari n8n | Secret |
 
 ---
 
-## 14. Fitur yang Tersedia
+## 16. Fitur yang Tersedia
 
 | # | Fitur | Status | Keterangan |
 |---|-------|--------|------------|
-| 1 | Login Admin/Siswa/Orang Tua | ✅ | JWT + bcrypt |
+| 1 | Login Admin/Siswa/Orang Tua | ✅ | NIS + Password, JWT |
 | 2 | Dashboard Nilai | ✅ | Per mata pelajaran + detail |
 | 3 | Ranking Kelas & Angkatan | ✅ | Real-time |
-| 4 | Input Nilai Manual | ✅ | Spreadsheet-like UI |
-| 5 | Pesan dari Admin | ✅ | Prioritas + sudah/belum dibaca |
-| 6 | Notifikasi Telegram | ✅ | Harian otomatis + inline button |
-| 7 | Aktivasi via Telegram | ✅ | Kode unik per siswa |
-| 8 | Bot Telegram | ✅ | /start, /help, /status, AKTIF |
-| 9 | Kelola Siswa (CRUD) | ✅ | Import CSV, edit, hapus |
-| 10 | Kode Aktivasi | ✅ | Generate per siswa / massal |
-| 11 | Ganti Password | ✅ | Dari dashboard |
-| 12 | Lupa Password | ✅ | OTP Telegram + fallback NISN |
-| 13 | Export CSV | ✅ | Download nilai |
-| 14 | Google Classroom Sync | ⏸️ | Butuh billing GCP |
-| 15 | Backup Database | ✅ | Auto harian + manual |
-| 16 | Monitoring | ✅ | Status server + error log |
-| 17 | CI/CD | ✅ | GitHub Actions + deploy.bat |
-| 18 | Rate Limiting | ✅ | Login, forgot-password |
-| 19 | Zod Validation | ✅ | Validasi input |
-| 20 | Docker Support | ✅ | docker-compose.yml |
+| 4 | Input Nilai Manual | ✅ | Spreadsheet-like UI, bulk save |
+| 5 | Google Classroom Sync | ✅ | OAuth2, auto-detect mata pelajaran |
+| 6 | Pesan dari Admin | ✅ | Prioritas + target kelas/rombel |
+| 7 | Notifikasi Telegram | ✅ | Harian otomatis + inline button |
+| 8 | Aktivasi via Telegram | ✅ | Kode unik per siswa |
+| 9 | Bot Telegram | ✅ | /start, /help, /aktivasi, /nilai |
+| 10 | Kelola Siswa (CRUD) | ✅ | Tambah, edit, hapus, search |
+| 11 | Import Excel | ✅ | Upload .xlsx/.xls |
+| 12 | Kode Aktivasi | ✅ | Generate per siswa / massal |
+| 13 | Ganti Password | ✅ | Dari dashboard |
+| 14 | Lupa Password | ✅ | OTP Telegram |
+| 15 | Export CSV | ✅ | Download nilai |
+| 16 | Backup Database | ✅ | Auto jam 2 pagi + manual |
+| 17 | Monitoring | ✅ | Uptime, RAM, CPU, error log |
+| 18 | CI/CD | ✅ | GitHub Actions + deploy.bat |
+| 19 | Rate Limiting | ✅ | Login (100/15min), forgot-password (5/15min) |
+| 20 | Cloudflare Tunnel | ✅ | Akses dari mana saja |
+
+**Yang tidak ada (sesuai scope):**
+- ❌ Absensi
+- ❌ Cetak raport
+- ❌ Jadwal pelajaran
 
 ---
 
-## 15. Deployment
+## 17. Deployment
 
-### Local Development
+### Persiapan Server
 ```
-git clone https://github.com/rafiramdhani1/Classroom-2.git
-cd smk-akademik
-.\deploy.bat
+1. Install Node.js 18+
+2. Install MongoDB
+3. Install Git
+4. Install PM2: npm install -g pm2
+5. Install Cloudflared
 ```
 
-### Production (Server)
+### Step-by-Step
+```bash
+# 1. Clone repository
+git clone https://github.com/rafiramdhni1/Classroom-2.git
+
+# 2. Install dependencies
+cd backend && npm install
+cd ../frontend && npm install && npm run build
+
+# 3. Configure .env
+cd ../backend
+# Edit .env sesuai server
+
+# 4. Seed database
+node ../backend/seed.js
+
+# 5. Start server
+pm2 start server.js --name "backend"
+pm2 start bot-poll.js --name "bot"
+
+# 6. Start Cloudflare tunnel
+cloudflared tunnel --url http://127.0.0.1:5000
+
+# 7. Update FRONTEND_URL di .env
+# Restart backend: pm2 restart backend
 ```
-1. Clone repo di server
-2. Jalankan: .\deploy.bat
-3. Akses: http://<server-ip>:5000
-4. Login: admin / admin123
+
+### Akun Default
+```
+Admin:  NIS = admin     | Password = admin123
+Siswa:  NIS = 240001    | Password = 240001
 ```
 
 ### Environment Variables (.env)
 ```
 PORT=5000
 MONGODB_URI=mongodb://localhost:27017/smk_akademik
-JWT_SECRET=<secret>
+JWT_SECRET=smk-tkj-akademik-2024
 GOOGLE_CLIENT_ID=<dari Google Cloud Console>
 GOOGLE_CLIENT_SECRET=<dari Google Cloud Console>
+GOOGLE_REDIRECT_URI=http://localhost:5000/api/auth/google/callback
 TELEGRAM_BOT_TOKEN=<dari @BotFather>
-N8N_SECRET=<secret untuk n8n>
-FRONTEND_URL=http://localhost:5000
+TELEGRAM_BOT_USERNAME=smktkj_akademik_bot
+FRONTEND_URL=<URL Cloudflare tunnel>
+N8N_SECRET=smk-tkj-n8n-secret
 ```
 
 ---
 
-## 16. Statistik Project
+## 18. Statistik Project
 
 | Metrik | Nilai |
 |--------|-------|
 | Total File | ~30 |
-| Backend Routes | 6 (auth, dashboard, admin, grades, tools, webhook) |
+| Backend Routes | 7 (auth, dashboard, admin, grades, classroom, tools, webhook) |
 | Database Models | 7 (User, Student, Grade, CourseworkCache, ChatId, ActivationCode, AdminMessage) |
 | Frontend Pages | 3 (Login, Dashboard, AdminPanel) |
+| Admin Panel Tabs | 8 (Siswa, Input Nilai, Pesan, Kode Aktivasi, Import, Google Classroom, Backup, Monitoring) |
 | API Endpoints | ~35 |
 | Lines of Code | ~5000+ |
-| Dependencies (backend) | express, mongoose, jsonwebtoken, bcrypt, node-cron, zod, winston, express-rate-limit |
-| Dependencies (frontend) | react, react-router-dom, tailwindcss, axios |
 
 ---
 
-*Dokumen ini untuk presentasi Sistem Informasi Akademik SMK TKJ*
+## 19. Credentials & Tokens
+
+| Service | Credential |
+|---------|------------|
+| Admin Login | NIS: `admin`, Password: `admin123` |
+| Test Student | NIS: `240001`, Password: `240001` |
+| Telegram Bot | `@smktkj_akademik_bot` |
+| Google Account | `tamasukajajan@gmail.com` |
+| Google Cloud Project | `smk-akademik` |
+| n8n Webhook Secret | `smk-tkj-n8n-secret` |
+
+---
+
+*Dokumentasi ini untuk presentasi Sistem Informasi Akademik SMK TKJ*
 *Terakhir diperbarui: September 2026*

@@ -1,7 +1,7 @@
 const { z } = require('zod');
 
 const loginSchema = z.object({
-  nis: z.string().min(1, 'NIS harus diisi'),
+  nisn: z.string().min(1, 'NISN harus diisi'),
   password: z.string().min(1, 'Password harus diisi'),
 });
 
@@ -11,17 +11,16 @@ const changePasswordSchema = z.object({
 });
 
 const forgotPasswordSchema = z.object({
-  nis: z.string().min(1, 'NIS harus diisi'),
+  nisn: z.string().min(1, 'NISN harus diisi'),
 });
 
 const verifyOtpSchema = z.object({
-  nis: z.string().min(1),
+  nisn: z.string().min(1),
   otp: z.string().length(6, 'OTP harus 6 digit'),
   newPassword: z.string().min(6, 'Password baru minimal 6 karakter'),
 });
 
 const fallbackVerifySchema = z.object({
-  nis: z.string().min(1),
   nisn: z.string().min(1, 'NISN harus diisi'),
   orangTuaNama: z.string().min(1, 'Nama orang tua harus diisi'),
 });
@@ -44,8 +43,8 @@ const createActivationCodeSchema = z.object({
 
 const bulkCreateSchema = z.object({
   students: z.array(z.object({
-    nis: z.string().min(1),
-    nisn: z.string().optional(),
+    nis: z.string().optional(),
+    nisn: z.string().min(1, 'NISN harus diisi'),
     nama: z.string().min(1),
     kelas: z.string(),
     angkatan: z.number().optional(),
