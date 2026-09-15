@@ -22,12 +22,13 @@ export default function AdminPanel() {
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [bulkText, setBulkText] = useState('');
   const [bulkResult, setBulkResult] = useState(null);
+  const [exportedCodes, setExportedCodes] = useState([]);
   const [googleAuth, setGoogleAuth] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
 
   const [editingStudent, setEditingStudent] = useState(null);
-  const [editForm, setEditForm] = useState({ nis: '', nisn: '', nama: '', kelas: '' });
+  const [editForm, setEditForm] = useState({ nis: '', nisn: '', nama: '', kelas: '', orangTuaNama: '', orangTuaTelepon: '' });
   const [searchInput, setSearchInput] = useState('');
   const searchTimeout = useRef(null);
 
@@ -44,6 +45,17 @@ export default function AdminPanel() {
   const [showNewAssignment, setShowNewAssignment] = useState(false);
   const [newAssignment, setNewAssignment] = useState({ title: '', type: 'tugas' });
   const [gradeSaving, setGradeSaving] = useState(false);
+  const [assignmentTypes, setAssignmentTypes] = useState({});
+
+  const [classroomKelas, setClassroomKelas] = useState('');
+  const [classroomSubject, setClassroomSubject] = useState('');
+  const [classroomData, setClassroomData] = useState([]);
+  const [classroomLoading, setClassroomLoading] = useState(false);
+  const [classroomSubjects, setClassroomSubjects] = useState([]);
+  const [classroomRealtime, setClassroomRealtime] = useState(true);
+  const [classroomLastSync, setClassroomLastSync] = useState(null);
+  const [syncingStudents, setSyncingStudents] = useState(false);
+  const [syncStudentsResult, setSyncStudentsResult] = useState(null);
 
   const KELAS_LIST = ['X-TKJ1', 'X-TKJ2', 'XI-TKJ1', 'XI-TKJ2', 'XII-TKJ1', 'XII-TKJ2'];
 
@@ -60,6 +72,7 @@ export default function AdminPanel() {
   useEffect(() => {
     if (tab === 'backup') loadBackups();
     if (tab === 'monitoring') loadMonitoring();
+    if (tab === 'classroom') loadClassroomSubjects();
   }, [tab]);
   useEffect(() => { loadStudents(); }, [page, filterKelas, search]);
 
@@ -156,9 +169,41 @@ export default function AdminPanel() {
         defaultPassword: 'smk123',
       });
       setBulkResult(data);
+      setExportedCodes(data.codes || []);
+      setBulkText('');
       loadData();
     } catch (err) {
       alert('Gagal import.');
+    }
+  };
+
+  const exportCodesToCSV = () => {
+    if (exportedCodes.length === 0) return;
+    
+    const headers = ['Nama', 'NISN', 'Kode Siswa', 'Kode Orang Tua'];
+    const rows = exportedCodes.map(c => [
+      c.nama,
+      c.nisn,
+      c.studentCode,
+      c.parentCode || '-'
+    ]);
+    
+    const csvContent = [headers, ...rows].map(r => r.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `kode-aktivasi-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const fetchPendingCodes = async () => {
+    try {
+      const { data } = await api.get('/admin/activation-codes/export?status=pending');
+      setExportedCodes(data.codes);
+    } catch (err) {
+      alert('Gagal mengambil kode aktivasi.');
     }
   };
 
@@ -174,7 +219,7 @@ export default function AdminPanel() {
 
   const editStudent = (s) => {
     setEditingStudent(s);
-    setEditForm({ nis: s.nis, nisn: s.nisn || '', nama: s.nama, kelas: s.kelas });
+    setEditForm({ nis: s.nis, nisn: s.nisn || '', nama: s.nama, kelas: s.kelas, orangTuaNama: s.orangTuaNama || '', orangTuaTelepon: s.orangTuaTelepon || '' });
   };
 
   const saveStudent = async () => {
@@ -260,6 +305,13 @@ export default function AdminPanel() {
       const { data } = await api.get(`/grades?kelas=${gradeKelas}&subject=${gradeSubject}`);
       setGradeData(data.students);
       setGradeAssignments(data.assignments || []);
+      const types = {};
+      for (const sg of data.students) {
+        for (const g of sg.grades) {
+          types[g.title] = g.type;
+        }
+      }
+      setAssignmentTypes(types);
     } catch (err) {
       console.error('Gagal memuat nilai:', err);
     } finally {
@@ -274,6 +326,7 @@ export default function AdminPanel() {
   const addAssignment = async () => {
     if (!newAssignment.title.trim()) return;
     setGradeAssignments(prev => [...prev, newAssignment.title.trim()]);
+    setAssignmentTypes(prev => ({ ...prev, [newAssignment.title.trim()]: newAssignment.type }));
     setShowNewAssignment(false);
     setNewAssignment({ title: '', type: 'tugas' });
   };
@@ -288,7 +341,7 @@ export default function AdminPanel() {
       if (existingIdx >= 0) {
         grades[existingIdx] = { ...grades[existingIdx], score: val };
       } else {
-        grades.push({ title: assignment, score: val, type: 'tugas', maxScore: 100 });
+        grades.push({ title: assignment, score: val, type: assignmentTypes[assignment] || 'tugas', maxScore: 100 });
       }
       student.grades = grades;
       updated[studentIdx] = student;
@@ -308,7 +361,7 @@ export default function AdminPanel() {
               studentId: sg.student._id,
               subject: gradeSubject,
               title: assignment,
-              type: g.type || 'tugas',
+              type: g.type || assignmentTypes[assignment] || 'tugas',
               score: Number(g.score),
               maxScore: g.maxScore || 100,
             });
@@ -356,6 +409,71 @@ export default function AdminPanel() {
     }
   };
 
+  const syncStudents = async () => {
+    setSyncingStudents(true);
+    setSyncStudentsResult(null);
+    try {
+      const { data } = await api.post('/classroom-realtime/sync-students');
+      setSyncStudentsResult(data);
+    } catch (err) {
+      alert('Gagal sync siswa: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setSyncingStudents(false);
+    }
+  };
+
+  const loadClassroomSubjects = async () => {
+    try {
+      const { data } = await api.get('/classroom-grades/subjects');
+      setClassroomSubjects(data.subjects);
+    } catch (err) {
+      console.error('Gagal memuat mata pelajaran:', err);
+    }
+  };
+
+  const loadClassroomGrades = async () => {
+    if (!classroomKelas || !classroomSubject) return;
+    setClassroomLoading(true);
+    try {
+      const res = await api.get(`/classroom-realtime/grades?kelas=${classroomKelas}&subject=${classroomSubject}`);
+      const data = res.data.data || [];
+      const students = res.data.students || [];
+      
+      const result = students.map(student => {
+        const subs = data
+          .filter(cw => cw.submissions?.some(s => s.classroomStudentId === student.classroomId))
+          .flatMap(cw => cw.submissions
+            .filter(s => s.classroomStudentId === student.classroomId)
+            .map(s => ({
+              courseworkId: cw.courseworkId,
+              title: cw.title,
+              courseAlias: cw.courseAlias,
+              courseName: cw.courseName,
+              dueDate: cw.dueDate,
+              maxPoints: cw.maxPoints,
+              state: s.state,
+              grade: s.grade,
+              late: s.late,
+              submittedAt: s.submittedAt,
+            }))
+          );
+        return { student, submissions: subs };
+      });
+
+      setClassroomData(result);
+      setClassroomLastSync(new Date());
+    } catch (err) {
+      console.error('Gagal memuat nilai classroom:', err);
+      alert('Gagal mengambil data: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setClassroomLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (classroomKelas && classroomSubject) loadClassroomGrades();
+  }, [classroomKelas, classroomSubject]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -401,6 +519,7 @@ export default function AdminPanel() {
         {[
           { key: 'students', label: 'Siswa' },
           { key: 'grades', label: 'Input Nilai' },
+          { key: 'classroom', label: 'Nilai Classroom' },
           { key: 'messages', label: 'Pesan' },
           { key: 'codes', label: 'Kode Aktivasi' },
           { key: 'import', label: 'Import' },
@@ -664,6 +783,148 @@ export default function AdminPanel() {
           </div>
         )}
 
+        {/* Classroom Grades Tab */}
+        {tab === 'classroom' && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl p-4 shadow-sm space-y-3">
+              <h3 className="font-semibold text-gray-800">Nilai dari Google Classroom</h3>
+              <div className="flex gap-2">
+                <select
+                  value={classroomKelas}
+                  onChange={(e) => setClassroomKelas(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                >
+                  <option value="">Pilih Kelas</option>
+                  {KELAS_LIST.map(k => <option key={k} value={k}>{k}</option>)}
+                </select>
+                <select
+                  value={classroomSubject}
+                  onChange={(e) => setClassroomSubject(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                >
+                  <option value="">Pilih Mata Pelajaran</option>
+                  {classroomSubjects.map(s => (
+                    <option key={s._id} value={s._id}>{s._id} - {s.courseName}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-400">
+                  Data real-time dari Google Classroom
+                  {classroomLastSync && ` • Update: ${classroomLastSync.toLocaleTimeString('id-ID')}`}
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    setClassroomLoading(true);
+                    try {
+                      await api.post('/auth/google/sync');
+                      alert('Sinkronisasi berhasil!');
+                      loadClassroomGrades();
+                    } catch (err) {
+                      alert('Gagal sync: ' + (err.response?.data?.error || err.message));
+                    } finally {
+                      setClassroomLoading(false);
+                    }
+                  }}
+                  disabled={classroomLoading}
+                  className="flex-1 bg-green-600 text-white py-2 rounded-lg font-medium hover:bg-green-700 text-sm disabled:opacity-50"
+                >
+                  {classroomLoading ? 'Syncing...' : 'Sync Google Classroom'}
+                </button>
+                <button
+                  onClick={loadClassroomGrades}
+                  disabled={classroomLoading || !classroomKelas || !classroomSubject}
+                  className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 text-sm disabled:opacity-50"
+                >
+                  {classroomLoading ? 'Loading...' : 'Refresh'}
+                </button>
+              </div>
+            </div>
+
+            {classroomKelas && classroomSubject && (
+              <>
+                {classroomLoading ? (
+                  <div className="text-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
+                  </div>
+                ) : classroomData.length > 0 ? (
+                  <div className="bg-white rounded-xl shadow-sm overflow-x-auto">
+                    {(() => {
+                      const allTitles = [...new Set(classroomData.flatMap(sg => sg.submissions.map(s => s.title)))];
+                      return (
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-gray-50">
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 sticky left-0 bg-gray-50">Nama</th>
+                          <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">NISN</th>
+                          {allTitles.map((title, i) => (
+                            <th key={i} className="px-3 py-2 text-center text-xs font-semibold text-gray-500 min-w-[100px]" title={title}>
+                              {title.length > 15 ? title.substring(0, 15) + '...' : title}
+                            </th>
+                          ))}
+                          <th className="px-3 py-2 text-center text-xs font-semibold text-gray-500 bg-gray-100">Rata-rata</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {classroomData.map(sg => {
+                          const grades = allTitles.map(title => {
+                            const sub = sg.submissions.find(s => s.title === title);
+                            return sub?.grade !== undefined && sub?.grade !== null ? Number(sub.grade) : null;
+                          });
+                          const validGrades = grades.filter(g => g !== null);
+                          const avg = validGrades.length > 0 ? Math.round(validGrades.reduce((a, b) => a + b, 0) / validGrades.length) : null;
+                          return (
+                            <tr key={sg.student._id} className="border-t border-gray-100 hover:bg-gray-50">
+                              <td className="px-3 py-2 sticky left-0 bg-white hover:bg-gray-50">
+                                <p className="font-medium text-gray-800 text-xs">{sg.student.nama}</p>
+                              </td>
+                              <td className="px-3 py-2 text-xs font-mono">{sg.student.nisn}</td>
+                              {grades.map((grade, i) => (
+                                <td key={i} className="px-3 py-2 text-center">
+                                  {grade !== null ? (
+                                    <span className={`text-xs font-bold px-2 py-1 rounded-full ${
+                                      grade >= 80 ? 'bg-green-100 text-green-700' :
+                                      grade >= 60 ? 'bg-yellow-100 text-yellow-700' :
+                                      'bg-red-100 text-red-700'
+                                    }`}>{grade}</span>
+                                  ) : (
+                                    <span className="text-xs text-gray-400">-</span>
+                                  )}
+                                </td>
+                              ))}
+                              <td className="px-3 py-2 text-center bg-gray-50">
+                                {avg !== null ? (
+                                  <span className={`text-xs font-bold px-2 py-1 rounded-full ${
+                                    avg >= 80 ? 'bg-green-100 text-green-700' :
+                                    avg >= 60 ? 'bg-yellow-100 text-yellow-700' :
+                                    'bg-red-100 text-red-700'
+                                  }`}>{avg}</span>
+                                ) : (
+                                  <span className="text-xs text-gray-400">-</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                      );
+                    })()}
+                  </div>
+                ) : (
+                  <p className="text-center text-gray-500 text-sm py-8">Tidak ada data untuk kelas dan mata pelajaran ini.</p>
+                )}
+              </>
+            )}
+
+            {!classroomKelas || !classroomSubject ? (
+              <p className="text-center text-gray-500 text-sm py-8">Pilih kelas dan mata pelajaran untuk melihat nilai dari Google Classroom.</p>
+            ) : null}
+          </div>
+        )}
+
         {/* Messages Tab */}
         {tab === 'messages' && (
           <div className="space-y-4">
@@ -802,27 +1063,80 @@ export default function AdminPanel() {
 
         {/* Import Tab */}
         {tab === 'import' && (
-          <div className="bg-white rounded-xl p-4 shadow-sm space-y-3">
-            <h3 className="font-semibold text-gray-800">Import Siswa dari CSV</h3>
-            <p className="text-xs text-gray-500">Format: NIS, NISN, Nama, Kelas (satu baris per siswa)</p>
-            <textarea
-              value={bulkText}
-              onChange={(e) => setBulkText(e.target.value)}
-              placeholder={"240101, 00240101, Ahmad Fauzi, X-TKJ1\n240102, 00240102, Budi Santoso, X-TKJ1"}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono h-40 resize-none focus:ring-2 focus:ring-primary-500 outline-none"
-            />
-            <button
-              onClick={handleBulkImport}
-              className="w-full bg-primary-600 text-white py-2 rounded-lg font-medium hover:bg-primary-700 text-sm"
-            >
-              Import Sekarang
-            </button>
-            {bulkResult && (
-              <div className="bg-green-50 text-green-700 px-4 py-3 rounded-lg text-sm">
-                {bulkResult.message}
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl p-4 shadow-sm space-y-3">
+              <h3 className="font-semibold text-gray-800">Import Siswa dari CSV</h3>
+              <p className="text-xs text-gray-500">Format: NIS, NISN, Nama, Kelas (satu baris per siswa)</p>
+              <textarea
+                value={bulkText}
+                onChange={(e) => setBulkText(e.target.value)}
+                placeholder={"240101, 00240101, Ahmad Fauzi, X-TKJ1\n240102, 00240102, Budi Santoso, X-TKJ1"}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono h-40 resize-none focus:ring-2 focus:ring-primary-500 outline-none"
+              />
+              <button
+                onClick={handleBulkImport}
+                className="w-full bg-primary-600 text-white py-2 rounded-lg font-medium hover:bg-primary-700 text-sm"
+              >
+                Import Sekarang
+              </button>
+              {bulkResult && (
+                <div className="bg-green-50 text-green-700 px-4 py-3 rounded-lg text-sm">
+                  {bulkResult.message}
+                </div>
+              )}
+              <p className="text-xs text-gray-400">Password default: smk123</p>
+            </div>
+
+            <div className="bg-white rounded-xl p-4 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-gray-800">Kode Aktivasi</h3>
+                <div className="flex gap-2">
+                  <button
+                    onClick={fetchPendingCodes}
+                    className="text-xs bg-gray-100 text-gray-700 px-3 py-1 rounded-lg hover:bg-gray-200"
+                  >
+                    Muat Semua
+                  </button>
+                  {exportedCodes.length > 0 && (
+                    <button
+                      onClick={exportCodesToCSV}
+                      className="text-xs bg-green-100 text-green-700 px-3 py-1 rounded-lg hover:bg-green-200"
+                    >
+                      Export CSV
+                    </button>
+                  )}
+                </div>
               </div>
-            )}
-            <p className="text-xs text-gray-400">Password default: smk123</p>
+              
+              {exportedCodes.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Nama</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">NISN</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Kode Siswa</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">Kode Ortu</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {exportedCodes.map((c, i) => (
+                        <tr key={i} className="border-t border-gray-100">
+                          <td className="px-3 py-2 text-xs">{c.nama}</td>
+                          <td className="px-3 py-2 text-xs font-mono">{c.nisn}</td>
+                          <td className="px-3 py-2 text-xs font-mono bg-green-50">{c.studentCode}</td>
+                          <td className="px-3 py-2 text-xs font-mono bg-blue-50">{c.parentCode || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-center text-gray-500 text-sm py-4">
+                  Belum ada kode. Import siswa terlebih dahulu.
+                </p>
+              )}
+            </div>
           </div>
         )}
 
@@ -874,6 +1188,27 @@ export default function AdminPanel() {
                       ? `Berhasil! ${syncResult.courses} kelas ditemukan.`
                       : syncResult.message
                     }
+                  </div>
+                )}
+
+                <button
+                  onClick={syncStudents}
+                  disabled={syncingStudents}
+                  className="w-full bg-purple-600 text-white py-2 rounded-lg font-medium hover:bg-purple-700 text-sm disabled:opacity-50"
+                >
+                  {syncingStudents ? 'Menyinkronkan Siswa...' : 'Sinkronkan ID Siswa dari Google Classroom'}
+                </button>
+
+                {syncStudentsResult && (
+                  <div className="bg-green-50 text-green-700 px-4 py-3 rounded-lg text-sm">
+                    {syncStudentsResult.message}
+                    {syncStudentsResult.details?.length > 0 && (
+                      <div className="mt-2 text-xs max-h-40 overflow-y-auto">
+                        {syncStudentsResult.details.map((d, i) => (
+                          <div key={i}>{d.nama} ({d.nisn}) → {d.classroomId}</div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1076,6 +1411,20 @@ export default function AdminPanel() {
             >
               {KELAS_LIST.map(k => <option key={k} value={k}>{k}</option>)}
             </select>
+            <input
+              type="text"
+              placeholder="Nama Orang Tua"
+              value={editForm.orangTuaNama}
+              onChange={(e) => setEditForm({ ...editForm, orangTuaNama: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            />
+            <input
+              type="text"
+              placeholder="Telepon Orang Tua"
+              value={editForm.orangTuaTelepon}
+              onChange={(e) => setEditForm({ ...editForm, orangTuaTelepon: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            />
             <div className="flex gap-2">
               <button onClick={() => setEditingStudent(null)} className="flex-1 bg-gray-200 py-2 rounded-lg text-sm">Batal</button>
               <button onClick={saveStudent} className="flex-1 bg-primary-600 text-white py-2 rounded-lg text-sm">Simpan</button>

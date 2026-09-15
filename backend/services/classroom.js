@@ -14,6 +14,8 @@ const SUBJECT_ALIAS_MAP = {
 const SCOPES = [
   'https://www.googleapis.com/auth/classroom.courses.readonly',
   'https://www.googleapis.com/auth/classroom.rosters.readonly',
+  'https://www.googleapis.com/auth/classroom.coursework.students.readonly',
+  'https://www.googleapis.com/auth/classroom.coursework.me.readonly',
 ];
 
 function getOAuth2Client() {
@@ -100,13 +102,23 @@ async function syncAllCourses(userId) {
             courseWorkId: work.id,
             pageSize: 100,
           });
-          submissions = (submissionsRes.data.studentSubmissions || []).map(sub => ({
+          const rawSubs = submissionsRes.data.studentSubmissions || [];
+
+          const classroomUserIds = rawSubs.map(sub => sub.userId).filter(Boolean);
+          const linkedStudents = await Student.find({ classroomId: { $in: classroomUserIds } });
+          const classroomToStudent = {};
+          for (const ls of linkedStudents) {
+            classroomToStudent[ls.classroomId] = ls._id;
+          }
+
+          submissions = rawSubs.map(sub => ({
             classroomStudentId: sub.userId,
+            studentId: classroomToStudent[sub.userId] || null,
             state: sub.state,
             late: sub.late,
-            grade: sub.shortAnswerSubmission?.grade || sub.multipleChoiceSubmission?.grade || undefined,
+            grade: sub.assignedGrade || sub.draftGrade || sub.shortAnswerSubmission?.grade || sub.multipleChoiceSubmission?.grade || undefined,
             submittedAt: sub.updateTime ? new Date(sub.updateTime) : undefined,
-            isGraded: sub.state === 'TURNED_IN' && (sub.shortAnswerSubmission?.grade !== undefined || sub.multipleChoiceSubmission?.grade !== undefined),
+            isGraded: (sub.state === 'TURNED_IN' || sub.state === 'RETURNED') && (sub.assignedGrade !== undefined && sub.assignedGrade !== null || sub.draftGrade !== undefined && sub.draftGrade !== null || sub.shortAnswerSubmission?.grade !== undefined || sub.multipleChoiceSubmission?.grade !== undefined),
             gradeComponents: [],
           }));
         } catch (subErr) {
@@ -162,13 +174,22 @@ async function syncCourseWork(classroom, course, alias) {
       pageSize: 100,
     });
 
-    const submissions = (submissionsRes.data.studentSubmissions || []).map(sub => ({
+    const rawSubs = submissionsRes.data.studentSubmissions || [];
+    const classroomUserIds = rawSubs.map(sub => sub.userId).filter(Boolean);
+    const linkedStudents = await Student.find({ classroomId: { $in: classroomUserIds } });
+    const classroomToStudent = {};
+    for (const ls of linkedStudents) {
+      classroomToStudent[ls.classroomId] = ls._id;
+    }
+
+    const submissions = rawSubs.map(sub => ({
       classroomStudentId: sub.userId,
+      studentId: classroomToStudent[sub.userId] || null,
       state: sub.state,
       late: sub.late,
-      grade: sub.shortAnswerSubmission?.grade || sub.multipleChoiceSubmission?.grade || undefined,
+      grade: sub.assignedGrade || sub.draftGrade || sub.shortAnswerSubmission?.grade || sub.multipleChoiceSubmission?.grade || undefined,
       submittedAt: sub.updateTime ? new Date(sub.updateTime) : undefined,
-      isGraded: sub.state === 'TURNED_IN' && (sub.shortAnswerSubmission?.grade !== undefined || sub.multipleChoiceSubmission?.grade !== undefined),
+      isGraded: (sub.state === 'TURNED_IN' || sub.state === 'RETURNED') && (sub.assignedGrade !== undefined && sub.assignedGrade !== null || sub.draftGrade !== undefined && sub.draftGrade !== null || sub.shortAnswerSubmission?.grade !== undefined || sub.multipleChoiceSubmission?.grade !== undefined),
       gradeComponents: [],
     }));
 

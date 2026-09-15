@@ -46,7 +46,7 @@ export default function Dashboard() {
         ...prev,
         messages: prev.messages.map(m =>
           m._id === messageId
-            ? { ...m, isReadBy: [...(m.isReadBy || []), { studentId: user.studentId, readAt: new Date() }] }
+            ? { ...m, isReadBy: [...(m.isReadBy || []), { studentId: user.student?.id, readAt: new Date() }] }
             : m
         ),
       }));
@@ -144,7 +144,7 @@ export default function Dashboard() {
           <div className="space-y-2">
             <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Pesan dari Admin</h2>
             {data.messages.map((msg) => {
-              const isRead = msg.isReadBy?.some(r => r.studentId === user.studentId);
+              const isRead = msg.isReadBy?.some(r => r.studentId === user.student?.id);
               return (
                 <div
                   key={msg._id}

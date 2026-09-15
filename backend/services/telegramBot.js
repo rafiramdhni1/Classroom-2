@@ -21,9 +21,9 @@ async function handleTelegramWebhook(update) {
   if (text === '/start') {
     await sendTelegramMessage(chatId,
       `🎓 <b>Selamat Datang di Sistem Akademik SMK TKJ</b>\n\n` +
-      `Untuk mengaktifkan notifikasi, kirim kode aktivasi yang telah diberikan sekolah.\n\n` +
-      `Format: <code>AKTIF &lt;kode&gt;</code>\n\n` +
-      `Contoh: <code>AKTIF X-TKJ1-001-ST-A1B2C3</code>`
+      `Untuk mengaktifkan notifikasi, kirim NISN kamu:\n\n` +
+      `📌 <b>Siswa:</b> <code>00240001</code>\n\n` +
+      `📌 <b>Orang Tua:</b> <code>00240001-OT</code>`
     );
     return;
   }
@@ -42,7 +42,7 @@ async function handleTelegramWebhook(update) {
   if (text === '/status') {
     const chat = await ChatId.findOne({ chatId, isActive: true });
     if (!chat) {
-      await sendTelegramMessage(chatId, '⚠️ Akun Anda belum teraktivasi. Kirim kode aktivasi dengan format: <code>AKTIF &lt;kode&gt;</code>');
+      await sendTelegramMessage(chatId, '⚠️ Akun Anda belum teraktivasi. Kirim NISN kamu.');
       return;
     }
     const student = await Student.findById(chat.studentId);
@@ -56,8 +56,12 @@ async function handleTelegramWebhook(update) {
     return;
   }
 
-  if (text.startsWith('AKTIF ')) {
+  if (text.startsWith('AKTIF ') || /^\d{7,8}(-OT)?$/i.test(text)) {
     const code = text.replace('AKTIF ', '').trim().toUpperCase();
+
+    let studentId = null;
+    let chatType = 'student';
+    let student = null;
 
     const activationCode = await ActivationCode.findOne({
       code,
@@ -65,38 +69,68 @@ async function handleTelegramWebhook(update) {
       expiresAt: { $gt: new Date() },
     });
 
-    if (!activationCode) {
+    if (activationCode) {
+      studentId = activationCode.studentId;
+      chatType = activationCode.chatType;
+    } else {
+      if (code.endsWith('-OT')) {
+        chatType = 'parent';
+        const nisn = code.replace('-OT', '');
+        student = await Student.findOne({ nisn });
+      } else {
+        student = await Student.findOne({ nisn: code });
+      }
+
+      if (student) {
+        studentId = student._id;
+      }
+    }
+
+    if (!studentId) {
       await sendTelegramMessage(chatId,
-        '❌ <b>Kode Aktivasi Tidak Valid</b>\n\nKode tidak ditemukan, sudah dipakai, atau sudah kedaluwarsa. Silakan hubungi admin sekolah untuk mendapatkan kode baru.'
+        '❌ <b>Kode Aktivasi Tidak Valid</b>\n\n' +
+        'NISN tidak ditemukan. Pastikan NISN yang kamu kirim sudah benar.\n\n' +
+        '📌 Contoh: <code>00240001</code>'
       );
       return;
     }
 
     const existingChat = await ChatId.findOne({
-      studentId: activationCode.studentId,
-      chatType: activationCode.chatType,
+      studentId,
+      chatType,
       isActive: true,
     });
 
     if (existingChat) {
-      existingChat.chatId = chatId;
+      if (existingChat.chatId !== chatId) {
+        await sendTelegramMessage(chatId,
+          '❌ <b>NISN Sudah Digunakan</b>\n\n' +
+          'NISN ini sudah teraktivasi oleh akun Telegram lain.\n' +
+          'Jika ini adalah akun kamu, silakan hubungi admin.'
+        );
+        return;
+      }
       existingChat.activatedAt = new Date();
       await existingChat.save();
     } else {
       const chat = new ChatId({
-        studentId: activationCode.studentId,
+        studentId,
         chatId,
-        chatType: activationCode.chatType,
+        chatType,
       });
       await chat.save();
     }
 
-    activationCode.isUsed = true;
-    activationCode.usedAt = new Date();
-    await activationCode.save();
+    if (activationCode) {
+      activationCode.isUsed = true;
+      activationCode.usedAt = new Date();
+      await activationCode.save();
+    }
 
-    const student = await Student.findById(activationCode.studentId);
-    const chatTypeLabel = activationCode.chatType === 'parent' ? 'Orang Tua' : 'Siswa';
+    if (!student) {
+      student = await Student.findById(studentId);
+    }
+    const chatTypeLabel = chatType === 'parent' ? 'Orang Tua' : 'Siswa';
 
     await sendTelegramMessage(chatId,
       `🎉 <b>Aktivasi Berhasil!</b>\n\n` +

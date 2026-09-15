@@ -6,48 +6,72 @@ services:
     container_name: smk-mongodb
     restart: unless-stopped
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
     volumes:
       - mongodb_data:/data/db
     environment:
       MONGO_INITDB_DATABASE: smk_akademik
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   backend:
     build: ./backend
     container_name: smk-backend
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
     env_file:
       - ./backend/.env
     environment:
       MONGODB_URI: mongodb://mongodb:27017/smk_akademik
     volumes:
       - ./backend/logs:/app/logs
-
-  bot:
-    build: ./backend
-    container_name: smk-bot
-    restart: unless-stopped
-    command: node bot-poll.js
-    depends_on:
-      - mongodb
-      - backend
-    env_file:
-      - ./backend/.env
-    environment:
-      MONGODB_URI: mongodb://mongodb:27017/smk_akademik
+      - ./backend/backups:/app/backups
+    healthcheck:
+      test: curl -f http://localhost:5000/api/health || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   frontend:
     build: ./frontend
     container_name: smk-frontend
     restart: unless-stopped
     ports:
-      - "3000:80"
+      - "127.0.0.1:3000:80"
     depends_on:
+      backend:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:alpine
+    container_name: smk-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - frontend
       - backend
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/ssl:/etc/nginx/ssl
+      - certbot_data:/var/www/certbot
+
+  certbot:
+    image: certbot/certbot
+    container_name: smk-certbot
+    volumes:
+      - certbot_data:/var/www/certbot
+      - ./nginx/ssl:/etc/letsencrypt
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
 
 volumes:
   mongodb_data:
+  certbot_data:

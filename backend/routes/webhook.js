@@ -15,9 +15,9 @@ function verifyN8nSecret(req, res, next) {
   next();
 }
 
-router.post('/telegram', express.raw({ type: 'application/json' }), async (req, res) => {
+router.post('/telegram', async (req, res) => {
   try {
-    const update = JSON.parse(req.body.toString());
+    const update = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
     await handleTelegramWebhook(update);
     res.sendStatus(200);
   } catch (error) {

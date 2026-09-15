@@ -18,6 +18,7 @@ Sistem informasi akademik berbasis web untuk SMK TKJ (Teknik Jaringan Komputer).
 - Monitoring sistem real-time
 - CI/CD dengan GitHub Actions
 
+
 **Scope Sekolah:**
 - 3 kelas: X, XI, XII
 - 2 rombel per kelas: A, B

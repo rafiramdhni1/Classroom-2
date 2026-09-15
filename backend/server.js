@@ -17,6 +17,8 @@ const adminRoutes = require('./routes/admin');
 const webhookRoutes = require('./routes/webhook');
 const toolsRoutes = require('./routes/tools');
 const gradesRoutes = require('./routes/grades');
+const classroomGradesRoutes = require('./routes/classroomGrades');
+const classroomRealtimeRoutes = require('./routes/classroomRealtime');
 const { trackRequest, logError } = require('./services/monitoring');
 
 connectDB();
@@ -71,6 +73,8 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/webhook', webhookRoutes);
 app.use('/api/tools', toolsRoutes);
 app.use('/api/grades', gradesRoutes);
+app.use('/api/classroom-grades', classroomGradesRoutes);
+app.use('/api/classroom-realtime', classroomRealtimeRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

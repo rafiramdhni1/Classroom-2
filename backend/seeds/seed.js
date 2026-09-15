@@ -37,10 +37,11 @@ async function seed() {
           kelas, angkatan,
           orangTuaNama: `Orang Tua ${nis}`,
           orangTuaTelepon: `6281${String(Math.floor(Math.random() * 100000000)).padStart(8, '0')}`,
+          isActive: true,
         });
 
         usersBatch.push({ nis, nisn, password: defaultHash, mustChangePassword: true, role: 'student', studentId });
-        usersBatch.push({ nis: `${nis}-OT`, nisn, password: defaultHash, mustChangePassword: true, role: 'parent', studentId });
+        usersBatch.push({ nis: `${nis}-OT`, nisn: `${nisn}-OT`, password: defaultHash, mustChangePassword: true, role: 'parent', studentId });
       }
     }
 

@@ -118,6 +118,10 @@ router.post('/forgot-password', validate(forgotPasswordSchema), async (req, res)
     await user.save();
 
     const student = await Student.findById(user.studentId);
+    if (!student) {
+      return res.status(404).json({ error: 'Data siswa tidak ditemukan.' });
+    }
+
     const chatIds = await ChatId.find({ studentId: student._id, isActive: true });
 
     let sent = false;

@@ -60,7 +60,7 @@ router.get('/', auth, async (req, res) => {
           s => s.studentId?.toString() === student._id.toString()
         );
 
-        if (submission && submission.isGraded && submission.grade !== undefined) {
+        if (submission && submission.grade !== undefined && submission.grade !== null) {
           subjectTotal += submission.grade;
           subjectCount++;
           components.push({
@@ -124,11 +124,11 @@ router.get('/', auth, async (req, res) => {
     const [classCoursework, angkatanCoursework, classManualGrades, angkatanManualGrades] = await Promise.all([
       CourseworkCache.find({
         'studentSubmissions.studentId': { $in: classIds },
-      }).select('studentSubmissions.studentId studentSubmissions.isGraded studentSubmissions.grade'),
+      }).select('studentSubmissions.studentId studentSubmissions.grade'),
       angkatanIds.length !== classIds.length
         ? CourseworkCache.find({
             'studentSubmissions.studentId': { $in: angkatanIds },
-          }).select('studentSubmissions.studentId studentSubmissions.isGraded studentSubmissions.grade')
+          }).select('studentSubmissions.studentId studentSubmissions.grade')
         : null,
       Grade.find({ studentId: { $in: classIds } }).select('studentId score'),
       angkatanIds.length !== classIds.length
@@ -145,7 +145,7 @@ router.get('/', auth, async (req, res) => {
           const sub = cw.studentSubmissions.find(
             s => s.studentId?.toString() === sid.toString()
           );
-          if (sub && sub.isGraded && sub.grade !== undefined) {
+          if (sub && sub.grade !== undefined && sub.grade !== null) {
             total += sub.grade;
             count++;
           }
@@ -224,6 +224,10 @@ router.put('/messages/:messageId/read', auth, async (req, res) => {
 // GET /api/dashboard/export-csv
 router.get('/export-csv', auth, async (req, res) => {
   try {
+    if (req.user.role === 'admin') {
+      return res.status(403).json({ error: 'Admin tidak dapat mengexport nilai.' });
+    }
+
     const student = await Student.findById(req.user.studentId);
     if (!student) {
       return res.status(404).json({ error: 'Data siswa tidak ditemukan.' });
@@ -240,7 +244,7 @@ router.get('/export-csv', auth, async (req, res) => {
         s => s.studentId?.toString() === student._id.toString()
       );
 
-      const score = sub && sub.isGraded && sub.grade !== undefined ? sub.grade : '-';
+      const score = sub && sub.grade !== undefined && sub.grade !== null ? sub.grade : '-';
       const status = sub && sub.state === 'TURNED_IN' ? 'Terkumpul' : 'Belum';
       const due = cw.dueDate
         ? new Date(cw.dueDate).toLocaleDateString('id-ID')

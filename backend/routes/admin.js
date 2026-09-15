@@ -48,13 +48,27 @@ router.get('/students', adminOnly, async (req, res) => {
 // PUT /api/admin/students/:id
 router.put('/students/:id', adminOnly, async (req, res) => {
   try {
-    const { nama, kelas, nisn, orangTuaNama, orangTuaTelepon } = req.body;
+    const { nama, kelas, nisn, nis, orangTuaNama, orangTuaTelepon, classroomId } = req.body;
+    const updateData = { nama, kelas, nisn, nis, orangTuaNama, orangTuaTelepon };
+    if (classroomId !== undefined) updateData.classroomId = classroomId;
     const student = await Student.findByIdAndUpdate(
       req.params.id,
-      { nama, kelas, nisn, orangTuaNama, orangTuaTelepon },
+      updateData,
       { new: true }
     );
     if (!student) return res.status(404).json({ error: 'Siswa tidak ditemukan.' });
+
+    if (nisn) {
+      await User.findOneAndUpdate(
+        { studentId: student._id, role: 'student' },
+        { nisn, nis: nis || nisn }
+      );
+      await User.findOneAndUpdate(
+        { studentId: student._id, role: 'parent' },
+        { nisn: `${nisn}-OT`, nis: `${nis || nisn}-OT` }
+      );
+    }
+
     res.json({ message: 'Data siswa diperbarui.', student });
   } catch (error) {
     res.status(500).json({ error: 'Terjadi kesalahan server.' });
@@ -201,6 +215,51 @@ router.get('/activation-codes', adminOnly, async (req, res) => {
   }
 });
 
+// GET /api/admin/activation-codes/export
+router.get('/activation-codes/export', adminOnly, async (req, res) => {
+  try {
+    const { kelas, status = 'pending' } = req.query;
+
+    let filter = {};
+    if (status === 'pending') filter.isUsed = false;
+    else if (status === 'used') filter.isUsed = true;
+
+    const codes = await ActivationCode.find(filter)
+      .populate('studentId', 'nama nisn kelas')
+      .sort({ createdAt: -1 });
+
+    let filteredCodes = codes;
+    if (kelas) {
+      filteredCodes = codes.filter(c => c.studentId?.kelas === kelas);
+    }
+
+    const groupedByStudent = {};
+    for (const c of filteredCodes) {
+      const studentId = c.studentId?._id?.toString() || 'unknown';
+      if (!groupedByStudent[studentId]) {
+        groupedByStudent[studentId] = {
+          nama: c.studentId?.nama || '-',
+          nisn: c.studentId?.nisn || '-',
+          kelas: c.studentId?.kelas || '-',
+          studentCode: null,
+          parentCode: null,
+        };
+      }
+      if (c.chatType === 'student' && !groupedByStudent[studentId].studentCode) {
+        groupedByStudent[studentId].studentCode = c.code;
+      } else if (c.chatType === 'parent' && !groupedByStudent[studentId].parentCode) {
+        groupedByStudent[studentId].parentCode = c.code;
+      }
+    }
+
+    const exportData = Object.values(groupedByStudent);
+
+    res.json({ codes: exportData, total: exportData.length });
+  } catch (error) {
+    res.status(500).json({ error: 'Terjadi kesalahan server.' });
+  }
+});
+
 // POST /api/admin/students/bulk-create
 router.post('/students/bulk-create', adminOnly, validate(bulkCreateSchema), async (req, res) => {
   try {
@@ -251,13 +310,53 @@ router.post('/students/bulk-create', adminOnly, validate(bulkCreateSchema), asyn
         await parentUser.save();
       }
 
-      results.push({ nisn: s.nisn, nama: s.nama, status: 'berhasil' });
+      const activationCode = `${s.nisn}-ST-${cryptoRandom(6)}`;
+      const actCode = new ActivationCode({
+        code: activationCode,
+        studentId: student._id,
+        chatType: 'student',
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      });
+      await actCode.save();
+
+      let parentActivationCode = null;
+      if (s.orangTuaNama) {
+        parentActivationCode = `${s.nisn}-OT-${cryptoRandom(6)}`;
+        const parentActCode = new ActivationCode({
+          code: parentActivationCode,
+          studentId: student._id,
+          chatType: 'parent',
+          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        });
+        await parentActCode.save();
+      }
+
+      results.push({
+        nisn: s.nisn,
+        nama: s.nama,
+        status: 'berhasil',
+        activationCode,
+        parentActivationCode,
+      });
     }
 
     const berhasil = results.filter(r => r.status === 'berhasil').length;
     const sudahAda = results.filter(r => r.status === 'sudah_ada').length;
 
-    res.json({ message: `Selesai: ${berhasil} dibuat, ${sudahAda} sudah ada.`, results });
+    const codes = results
+      .filter(r => r.activationCode)
+      .map(r => ({
+        nama: r.nama,
+        nisn: r.nisn,
+        studentCode: r.activationCode,
+        parentCode: r.parentActivationCode,
+      }));
+
+    res.json({
+      message: `Selesai: ${berhasil} dibuat, ${sudahAda} sudah ada.`,
+      results,
+      codes,
+    });
   } catch (error) {
     res.status(500).json({ error: 'Terjadi kesalahan server.' });
   }
