@@ -38,9 +38,14 @@ router.get('/', auth, async (req, res) => {
       ],
     }).sort({ createdAt: -1 }).limit(20);
 
-    const allCoursework = await CourseworkCache.find({
-      'studentSubmissions.studentId': student._id,
-    });
+    const allCoursework = await CourseworkCache.find({});
+
+    const classmateIds = (await Student.find({ kelas: student.kelas, isActive: true }).select('_id'))
+      .map(s => s._id.toString());
+
+    const relevantCoursework = allCoursework.filter(cw =>
+      cw.studentSubmissions.some(s => s.studentId && classmateIds.includes(s.studentId.toString()))
+    );
 
     const manualGrades = await Grade.find({ studentId: student._id });
 
@@ -49,7 +54,7 @@ router.get('/', auth, async (req, res) => {
     let totalSubjects = 0;
 
     for (const subject of SUBJECTS) {
-      const subjectWorks = allCoursework.filter(w => w.courseAlias === subject);
+      const subjectWorks = relevantCoursework.filter(w => w.courseAlias === subject);
       const subjectManual = manualGrades.filter(g => g.subject === subject);
       let subjectTotal = 0;
       let subjectCount = 0;
@@ -82,13 +87,16 @@ router.get('/', auth, async (req, res) => {
       }
 
       for (const mg of subjectManual) {
-        subjectTotal += mg.score;
-        subjectCount++;
+        const hasScore = mg.score !== null && mg.score !== undefined;
+        if (hasScore) {
+          subjectTotal += mg.score;
+          subjectCount++;
+        }
         components.push({
           title: mg.title,
-          score: mg.score,
+          score: hasScore ? mg.score : null,
           maxScore: mg.maxScore || 100,
-          isGraded: true,
+          isGraded: hasScore,
           type: mg.type,
         });
       }
@@ -152,7 +160,7 @@ router.get('/', auth, async (req, res) => {
         }
         if (manualGrades) {
           for (const mg of manualGrades) {
-            if (mg.studentId?.toString() === sid.toString()) {
+            if (mg.studentId?.toString() === sid.toString() && mg.score != null) {
               total += mg.score;
               count++;
             }

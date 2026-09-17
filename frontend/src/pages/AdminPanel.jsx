@@ -325,10 +325,31 @@ export default function AdminPanel() {
 
   const addAssignment = async () => {
     if (!newAssignment.title.trim()) return;
-    setGradeAssignments(prev => [...prev, newAssignment.title.trim()]);
-    setAssignmentTypes(prev => ({ ...prev, [newAssignment.title.trim()]: newAssignment.type }));
-    setShowNewAssignment(false);
-    setNewAssignment({ title: '', type: 'tugas' });
+    setGradeLoading(true);
+    try {
+      await api.post('/grades/assignment', {
+        subject: gradeSubject,
+        title: newAssignment.title.trim(),
+        type: newAssignment.type,
+      });
+      setShowNewAssignment(false);
+      setNewAssignment({ title: '', type: 'tugas' });
+      await loadGrades();
+    } catch (err) {
+      alert('Gagal menambah tugas: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setGradeLoading(false);
+    }
+  };
+
+  const removeAssignment = async (title) => {
+    if (!confirm(`Hapus tugas "${title}" beserta nilainya?`)) return;
+    try {
+      await api.delete(`/grades?subject=${gradeSubject}&title=${encodeURIComponent(title)}`);
+      await loadGrades();
+    } catch (err) {
+      alert('Gagal menghapus tugas: ' + (err.response?.data?.error || err.message));
+    }
   };
 
   const updateScore = (studentIdx, assignment, score) => {
@@ -696,7 +717,16 @@ export default function AdminPanel() {
 
                   <div className="flex flex-wrap gap-1">
                     {gradeAssignments.map((a, i) => (
-                      <span key={i} className="bg-gray-100 text-gray-700 text-xs px-2 py-1 rounded-full">{a}</span>
+                      <span key={i} className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2 py-1 rounded-full">
+                          {a}
+                          <button
+                            onClick={() => removeAssignment(a)}
+                            title={`Hapus tugas ${a}`}
+                            className="text-gray-400 hover:text-red-600 px-0.5"
+                          >
+                            ×
+                          </button>
+                        </span>
                     ))}
                     {gradeAssignments.length === 0 && (
                       <p className="text-xs text-gray-400">Belum ada komponen. Klik "+ Tambah" untuk menambahkan.</p>
@@ -725,7 +755,9 @@ export default function AdminPanel() {
                           {gradeData.map((sg, si) => {
                             const scores = gradeAssignments.map(a => {
                               const g = sg.grades.find(gr => gr.title === a);
-                              return g && g.score !== '' && g.score !== undefined ? Number(g.score) : null;
+                              return g && g.score !== '' && g.score !== undefined && g.score !== null
+                                ? Number(g.score)
+                                : null;
                             }).filter(s => s !== null);
                             const avg = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : '-';
                             return (

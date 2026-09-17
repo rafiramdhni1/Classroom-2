@@ -17,6 +17,11 @@ const studentSchema = new mongoose.Schema({
     required: true,
     trim: true,
   },
+  jk: {
+    type: String,
+    enum: ['L', 'P'],
+    trim: true,
+  },
   kelas: {
     type: String,
     required: true,

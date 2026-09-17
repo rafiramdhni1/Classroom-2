@@ -244,31 +244,37 @@ async function getStudentSubmissions(studentId) {
   }));
 }
 
+async function getUnsubmittedForStudent(student) {
+  const coursework = await CourseworkCache.find({
+    'studentSubmissions.studentId': student._id,
+  });
+
+  const unsubmitted = [];
+  for (const cw of coursework) {
+    const sub = cw.studentSubmissions.find(
+      s => s.studentId?.toString() === student._id.toString()
+    );
+
+    if (!sub || sub.state !== 'TURNED_IN') {
+      unsubmitted.push({
+        title: cw.title,
+        courseAlias: cw.courseAlias,
+        dueDate: cw.dueDate,
+        isLate: sub?.late || false,
+      });
+    }
+  }
+
+  return unsubmitted;
+}
+
 async function findUnsubmittedWork() {
   const results = [];
 
   const students = await Student.find({ isActive: true });
 
   for (const student of students) {
-    const coursework = await CourseworkCache.find({
-      'studentSubmissions.studentId': student._id,
-    });
-
-    const unsubmitted = [];
-    for (const cw of coursework) {
-      const sub = cw.studentSubmissions.find(
-        s => s.studentId?.toString() === student._id.toString()
-      );
-
-      if (!sub || sub.state !== 'TURNED_IN') {
-        unsubmitted.push({
-          title: cw.title,
-          courseAlias: cw.courseAlias,
-          dueDate: cw.dueDate,
-          isLate: sub?.late || false,
-        });
-      }
-    }
+    const unsubmitted = await getUnsubmittedForStudent(student);
 
     if (unsubmitted.length > 0) {
       results.push({
@@ -284,4 +290,4 @@ async function findUnsubmittedWork() {
   return results;
 }
 
-module.exports = { getOAuth2Client, getAuthUrl, getTokensFromCode, syncAllCourses, getStudentSubmissions, findUnsubmittedWork, SCOPES };
+module.exports = { getOAuth2Client, getAuthUrl, getTokensFromCode, syncAllCourses, getStudentSubmissions, findUnsubmittedWork, getUnsubmittedForStudent, SCOPES };

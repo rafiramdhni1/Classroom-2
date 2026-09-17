@@ -79,4 +79,4 @@ function formatNotification(entry) {
   return text;
 }
 
-module.exports = { sendDailyNotifications };
+module.exports = { sendDailyNotifications, formatNotification };

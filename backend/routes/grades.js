@@ -44,6 +44,49 @@ router.get('/', auth, adminOnly, async (req, res) => {
   }
 });
 
+// POST /api/grades/assignment - Create assignment with empty grades for all students
+router.post('/assignment', auth, adminOnly, async (req, res) => {
+  try {
+    const { subject, title, type, maxScore } = req.body;
+
+    if (!subject || !title) {
+      return res.status(400).json({ error: 'subject dan title wajib diisi.' });
+    }
+
+    if (!SUBJECTS.includes(subject)) {
+      return res.status(400).json({ error: 'subject tidak valid.' });
+    }
+
+    const students = await Student.find({ isActive: true });
+    let created = 0;
+
+    for (const student of students) {
+      const existing = await Grade.findOne({ studentId: student._id, subject, title });
+      if (existing) {
+        existing.score = existing.score ?? null;
+        existing.type = type || existing.type;
+        existing.maxScore = maxScore || existing.maxScore || 100;
+        await existing.save();
+      } else {
+        await Grade.create({
+          studentId: student._id,
+          subject,
+          title,
+          type: type || 'tugas',
+          score: null,
+          maxScore: maxScore || 100,
+        });
+        created++;
+      }
+    }
+
+    res.json({ message: `Tugas "${title}" dibuat untuk ${students.length} siswa (${created} baru).` });
+  } catch (error) {
+    console.error('Create assignment error:', error);
+    res.status(500).json({ error: 'Gagal membuat tugas.' });
+  }
+});
+
 // POST /api/grades - Create or update a single grade
 router.post('/', auth, adminOnly, async (req, res) => {
   try {

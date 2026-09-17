@@ -1,7 +1,7 @@
 const { z } = require('zod');
 
 const loginSchema = z.object({
-  nisn: z.string().min(1, 'NISN harus diisi'),
+  nis: z.string().min(1, 'Nomor Induk harus diisi'),
   password: z.string().min(1, 'Password harus diisi'),
 });
 
@@ -11,17 +11,17 @@ const changePasswordSchema = z.object({
 });
 
 const forgotPasswordSchema = z.object({
-  nisn: z.string().min(1, 'NISN harus diisi'),
+  nis: z.string().min(1, 'Nomor Induk harus diisi'),
 });
 
 const verifyOtpSchema = z.object({
-  nisn: z.string().min(1),
+  nis: z.string().min(1),
   otp: z.string().length(6, 'OTP harus 6 digit'),
   newPassword: z.string().min(6, 'Password baru minimal 6 karakter'),
 });
 
 const fallbackVerifySchema = z.object({
-  nisn: z.string().min(1, 'NISN harus diisi'),
+  nis: z.string().min(1, 'Nomor Induk harus diisi'),
   orangTuaNama: z.string().min(1, 'Nama orang tua harus diisi'),
 });
 

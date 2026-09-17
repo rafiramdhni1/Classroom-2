@@ -9,6 +9,9 @@ let offset = 0;
 const ActivationCode = require('./models/ActivationCode');
 const ChatId = require('./models/ChatId');
 const Student = require('./models/Student');
+const { sendTelegramMessageWithButton } = require('./services/telegram');
+const { getUnsubmittedForStudent } = require('./services/classroom');
+const { formatNotification } = require('./services/notification');
 
 async function handleUpdate(update) {
   const msg = update.message;
@@ -23,23 +26,57 @@ async function handleUpdate(update) {
   if (text === '/start') {
     await sendMessage(chatId,
       `Selamat Datang di Sistem Akademik SMK TKJ!\n\n` +
-      `Untuk mengaktifkan notifikasi, kirim NISN kamu:\n\n` +
-      `📌 Siswa: kirim NISN\n` +
-      `Contoh: 00240001\n\n` +
-      `📌 Orang Tua: kirim NISN-OT\n` +
-      `Contoh: 00240001-OT`
+      `Untuk mengaktifkan notifikasi, kirim Nomor Induk (NIS) kamu:\n\n` +
+      `📌 Siswa: kirim NIS\n` +
+      `Contoh: 13667\n\n` +
+      `📌 Orang Tua: kirim NIS-OT\n` +
+      `Contoh: 13667-OT`
     );
   } else if (text === '/help') {
     await sendMessage(chatId,
       `Bantuan:\n` +
       `/start - Mulai aktivasi\n` +
       `/status - Cek status akun\n` +
+      `/notif - Kirim contoh notifikasi\n` +
       `/help - Tampilkan bantuan`
     );
+  } else if (text === '/notif') {
+    const chat = await ChatId.findOne({ chatId, isActive: true });
+    if (!chat) {
+      await sendMessage(chatId,
+        '⚠️ Akun belum teraktivasi.\n\nAktivasi dulu dengan kirim Nomor Induk (NIS) kamu.\nContoh: 13667'
+      );
+      return;
+    }
+
+    const student = await Student.findById(chat.studentId);
+    if (!student) {
+      await sendMessage(chatId, 'Data siswa tidak ditemukan.');
+      return;
+    }
+
+    const unsubmitted = await getUnsubmittedForStudent(student);
+    const dashboardUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/login?nis=${student.nis}`;
+
+    let text;
+    if (unsubmitted.length > 0) {
+      text = formatNotification({ nama: student.nama, nis: student.nis, kelas: student.kelas, unsubmitted });
+    } else {
+      text = `━━━━━━━━━━━━━━━━━━━━━\n` +
+        `📋 TUGAS BELUM DIKUMPULKAN\n` +
+        `━━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `👤 Siswa: ${student.nama}\n` +
+        `🏫 Kelas: ${student.kelas}\n` +
+        `📝 Total kurang: 0 tugas\n\n` +
+        `✅ Saat ini tidak ada tugas yang belum dikumpulkan.\n\n` +
+        `⚠️ <i>Ini adalah CONTOH notifikasi untuk data Anda.</i>`;
+    }
+
+    await sendTelegramMessageWithButton(chatId, text, '📊 Buka Dashboard', dashboardUrl);
   } else if (text === '/status') {
     const chat = await ChatId.findOne({ chatId, isActive: true });
     if (!chat) {
-      await sendMessage(chatId, 'Akun Anda belum teraktivasi. Kirim NISN kamu.');
+      await sendMessage(chatId, 'Akun Anda belum teraktivasi. Kirim Nomor Induk (NIS) kamu.');
     } else {
       const student = await Student.findById(chat.studentId);
       if (student) {
@@ -50,7 +87,7 @@ async function handleUpdate(update) {
         await sendMessage(chatId, 'Data siswa tidak ditemukan.');
       }
     }
-  } else if (text.startsWith('AKTIF ') || /^\d{7,8}(-OT)?$/i.test(text)) {
+  } else if (text.startsWith('AKTIF ') || /^\d{3,8}(-OT)?$/i.test(text)) {
     const code = text.replace('AKTIF ', '').trim().toUpperCase();
     console.log(`[Aktivasi] Kode: ${code}`);
 
@@ -70,10 +107,10 @@ async function handleUpdate(update) {
     } else {
       if (code.endsWith('-OT')) {
         chatType = 'parent';
-        const nisn = code.replace('-OT', '');
-        student = await Student.findOne({ nisn });
+        const nis = code.replace('-OT', '');
+        student = await Student.findOne({ nis });
       } else {
-        student = await Student.findOne({ nisn: code });
+        student = await Student.findOne({ nis: code });
       }
 
       if (student) {
@@ -83,7 +120,7 @@ async function handleUpdate(update) {
 
     if (!studentId) {
       await sendMessage(chatId,
-        'Kode Aktivasi Tidak Valid.\nNISN tidak ditemukan. Pastikan NISN sudah benar.\n\nContoh: 00240001'
+        'Kode Aktivasi Tidak Valid.\nNomor Induk tidak ditemukan. Pastikan nomor induk sudah benar.\n\nContoh: 13667'
       );
       return;
     }

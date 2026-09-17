@@ -4,12 +4,12 @@ import { useAuth } from '../contexts/AuthContext';
 import api from '../utils/api';
 
 export default function Login() {
-  const [nisn, setNisn] = useState('');
+  const [nis, setNis] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
-  const [forgotNisn, setForgotNisn] = useState('');
+  const [forgotNis, setForgotNis] = useState('');
   const [forgotStep, setForgotStep] = useState(0);
   const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -24,10 +24,10 @@ export default function Login() {
     setLoading(true);
 
     try {
-      await login(nisn, password);
+      await login(nis, password);
       navigate('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.error || 'Gagal login. Periksa NISN dan password.');
+      setError(err.response?.data?.error || 'Gagal login. Periksa Nomor Induk dan password.');
     } finally {
       setLoading(false);
     }
@@ -39,7 +39,7 @@ export default function Login() {
     setLoading(true);
 
     try {
-      await api.post('/auth/forgot-password', { nisn: forgotNisn });
+      await api.post('/auth/forgot-password', { nis: forgotNis });
       setSuccess('OTP berhasil dikirim ke Telegram Anda.');
       setForgotStep(1);
     } catch (err) {
@@ -63,7 +63,7 @@ export default function Login() {
       const orangTuaNama = e.target.orangTuaNama?.value;
 
       await api.post('/auth/fallback-verify', {
-        nisn: forgotNisn,
+        nis: forgotNis,
         orangTuaNama,
       });
 
@@ -83,7 +83,7 @@ export default function Login() {
 
     try {
       await api.post('/auth/verify-otp', {
-        nisn: forgotNisn,
+        nis: forgotNis,
         otp,
         newPassword,
       });
@@ -91,7 +91,7 @@ export default function Login() {
       setSuccess('Password berhasil direset! Silakan login.');
       setShowForgot(false);
       setForgotStep(0);
-      setForgotNisn('');
+      setForgotNis('');
       setOtp('');
       setNewPassword('');
     } catch (err) {
@@ -131,13 +131,13 @@ export default function Login() {
 
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">NISN</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nomor Induk</label>
                   <input
                     type="text"
-                    value={nisn}
-                    onChange={(e) => setNisn(e.target.value)}
+                    value={nis}
+                    onChange={(e) => setNis(e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition"
-                    placeholder="Masukkan NISN"
+                    placeholder="Masukkan Nomor Induk"
                     required
                   />
                 </div>
@@ -177,7 +177,7 @@ export default function Login() {
 
               <div className="mt-6 pt-4 border-t border-gray-100 text-center">
                 <p className="text-xs text-gray-500">
-                  Login sebagai orang tua? Gunakan NISN dengan akhiran <code className="bg-gray-100 px-1 rounded">-OT</code>
+                  Login sebagai orang tua? Gunakan Nomor Induk dengan akhiran <code className="bg-gray-100 px-1 rounded">-OT</code>
                 </p>
               </div>
             </>
@@ -186,7 +186,7 @@ export default function Login() {
               {forgotStep === 0 && (
                 <>
                   <h2 className="text-xl font-semibold text-gray-800 mb-2">Lupa Password</h2>
-                  <p className="text-sm text-gray-500 mb-4">Masukkan NISN Anda untuk menerima OTP via Telegram.</p>
+                  <p className="text-sm text-gray-500 mb-4">Masukkan Nomor Induk Anda untuk menerima OTP via Telegram.</p>
 
                   {error && (
                     <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
@@ -197,10 +197,10 @@ export default function Login() {
                   <form onSubmit={handleForgotPassword} className="space-y-4">
                     <input
                       type="text"
-                      value={forgotNisn}
-                      onChange={(e) => setForgotNisn(e.target.value)}
+                      value={forgotNis}
+                      onChange={(e) => setForgotNis(e.target.value)}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
-                      placeholder="Masukkan NISN"
+                      placeholder="Masukkan Nomor Induk"
                       required
                     />
                     <button
